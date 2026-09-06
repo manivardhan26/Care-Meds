@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "CareMeds",
+    "slug": "caremeds",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#006874"
+      },
+      "package": "com.caremeds.app"
+    }
+  }
+}

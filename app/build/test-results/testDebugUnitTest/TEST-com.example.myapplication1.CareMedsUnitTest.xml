@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.myapplication1.CareMedsUnitTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-06T14:34:16.328Z" hostname="THISPC" time="0.134">
+  <properties/>
+  <testcase name="testExpirySafetyEvaluator_expiredMedicine" classname="com.example.myapplication1.CareMedsUnitTest" time="0.067"/>
+  <testcase name="testExpirySafetyEvaluator_monthYearFormat" classname="com.example.myapplication1.CareMedsUnitTest" time="0.001"/>
+  <testcase name="testExpirySafetyEvaluator_safeMedicine" classname="com.example.myapplication1.CareMedsUnitTest" time="0.004"/>
+  <testcase name="testAdherenceLogEntity_creation" classname="com.example.myapplication1.CareMedsUnitTest" time="0.002"/>
+  <testcase name="testExpirySafetyEvaluator_expiringSoonMedicine" classname="com.example.myapplication1.CareMedsUnitTest" time="0.001"/>
+  <testcase name="testMedicineEntity_defaultValues" classname="com.example.myapplication1.CareMedsUnitTest" time="0.001"/>
+  <testcase name="testOcrParser_extractsDetails" classname="com.example.myapplication1.CareMedsUnitTest" time="0.044"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
