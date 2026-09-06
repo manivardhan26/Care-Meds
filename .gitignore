@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Build & Bundling
+dist/
+build/
+.expo/
+*.tsbuildinfo
+
+# Logs & Runtime
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Android & Gradle
+.gradle/
+android-native/build/
+android-native/app/build/
+android-native/.gradle/
+*.apk
+*.aab
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
