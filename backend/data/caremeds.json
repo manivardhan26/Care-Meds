@@ -51,9 +51,32 @@
       "timeOfDay": "Night",
       "supplyCount": 8,
       "createdAt": 1785262000295
+    },
+    {
+      "name": "Paracetamol",
+      "dosage": "500mg",
+      "instructions": "Take 1 tablet daily in the morning",
+      "notes": "Take 1 tablet daily in the morning",
+      "expiryDate": "2027-08-31",
+      "frequency": "Once daily",
+      "reminderTime": "08:00 AM",
+      "timeOfDay": "Morning",
+      "supplyCount": 29,
+      "id": "med_1788721815818",
+      "createdAt": 1788721815818
     }
   ],
   "adherenceLogs": [
+    {
+      "id": "log_1788721826585_l6yk",
+      "medicineId": "med_1788721815818",
+      "medicineName": "Paracetamol",
+      "dosage": "500mg",
+      "scheduledTime": "08:00 AM",
+      "dateString": "2026-09-06",
+      "actionTimestamp": 1788721826585,
+      "status": "TAKEN"
+    },
     {
       "id": "log_1788720938471_7635",
       "medicineId": "med_3",
@@ -80,6 +103,6 @@
     "soundAlertsEnabled": true,
     "snoozeMinutes": 15,
     "isDarkMode": true,
-    "voiceLanguage": "te-IN"
+    "voiceLanguage": "en-US"
   }
 }

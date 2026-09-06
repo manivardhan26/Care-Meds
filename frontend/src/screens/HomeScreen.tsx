@@ -75,10 +75,10 @@ export default function HomeScreen() {
   const handleAction = async (med: Medicine, status: AdherenceStatus) => {
     await logAdherence(med.id, med.name, med.dosage, med.reminderTime, todayIso, status);
     
-    // If setting enabled, speak voice confirmation in selected language (default Telugu)
+    // If setting enabled, speak voice confirmation
     const currentSettings = settings || (await getSettings());
     if (currentSettings.voiceRemindersEnabled && status === 'TAKEN') {
-      speakTakenConfirmation(med.name, currentSettings.voiceLanguage || 'te-IN');
+      speakTakenConfirmation(med.name, 'en-US');
     }
     await loadData();
   };
@@ -114,16 +114,12 @@ export default function HomeScreen() {
               onPress={() =>
                 speakExpiryWarning(
                   expiredMedicines.map((m) => m.name).join(', '),
-                  settings?.voiceLanguage || 'te-IN'
+                  'en-US'
                 )
               }
             >
               <Ionicons name="volume-high" size={20} color={Colors.alertRed} />
-              <Text style={styles.voiceWarningBtnText}>
-                {settings?.voiceLanguage === 'en-US'
-                  ? 'Listen to voice alert'
-                  : 'తెలుగులో హెచ్చరిక వినండి (Listen Alert)'}
-              </Text>
+              <Text style={styles.voiceWarningBtnText}>Listen to voice alert</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -186,9 +182,9 @@ export default function HomeScreen() {
                     activeOpacity={0.7}
                     onPress={() => {
                       if (isExpired) {
-                        speakExpiryWarning(med.name, settings?.voiceLanguage || 'te-IN');
+                        speakExpiryWarning(med.name, 'en-US');
                       } else {
-                        speakReminder(med.name, med.dosage, med.instructions, settings?.voiceLanguage || 'te-IN');
+                        speakReminder(med.name, med.dosage, 'en-US', med.instructions);
                       }
                     }}
                   >

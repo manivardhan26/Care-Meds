@@ -58,12 +58,11 @@ export default function MedicineDetailScreen() {
       setIsSpeaking(false);
       return;
     }
-    const lang = settings?.voiceLanguage || 'te-IN';
     setIsSpeaking(true);
     if (isExpired) {
-      speakExpiryWarning(medicine.name, lang);
+      speakExpiryWarning(medicine.name, 'en-US');
     } else {
-      speakReminder(medicine.name, medicine.dosage, medicine.instructions, lang);
+      speakReminder(medicine.name, medicine.dosage, 'en-US', medicine.instructions);
     }
     setTimeout(() => setIsSpeaking(false), 6000);
   };
@@ -166,7 +165,7 @@ export default function MedicineDetailScreen() {
           ) : null}
         </View>
 
-        {/* Telugu Voice Audio Guide Card */}
+        {/* Voice Audio Guide Card */}
         <TouchableOpacity
           style={[styles.voiceGuideCard, isSpeaking && styles.voiceGuideCardActive]}
           activeOpacity={0.8}
@@ -176,17 +175,11 @@ export default function MedicineDetailScreen() {
             <Ionicons name={isSpeaking ? 'volume-high' : 'volume-medium'} size={24} color="#FFF" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.voiceGuideTitle}>
-              {settings?.voiceLanguage === 'en-US'
-                ? 'Voice Medication Guide'
-                : 'తెలుగు వాయిస్ సూచనలు (Voice Guide)'}
-            </Text>
+            <Text style={styles.voiceGuideTitle}>Voice Medication Guide</Text>
             <Text style={styles.voiceGuideSubtitle}>
               {isSpeaking
-                ? 'వాయిస్ సూచనలు ప్లే అవుతున్నాయి... (Speaking)'
-                : settings?.voiceLanguage === 'en-US'
-                ? 'Listen to dose, timing and instructions aloud'
-                : 'మోతాదు, సమయం మరియు సూచనలను తెలుగులో వినండి'}
+                ? 'Playing audio instructions...'
+                : 'Listen to dose, timing and instructions aloud'}
             </Text>
           </View>
           <Ionicons
