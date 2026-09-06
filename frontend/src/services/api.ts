@@ -1,7 +1,32 @@
+import { NativeModules, Platform } from 'react-native';
 import { Medicine, AdherenceLog, AppSettings, AdherenceStatus } from '../types';
 
-// Default API URL: can be configured via .env (EXPO_PUBLIC_API_URL)
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000/api';
+// Dynamic API URL resolution: automatically detects host IP from Metro or falls back to Wi-Fi IP
+export function getApiBaseUrl(): string {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
+    return envUrl.replace(/\/$/, '');
+  }
+
+  // Web platform runs in the same browser on localhost
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5000/api';
+  }
+
+  // On physical device or emulator, extract the computer IP from Metro bundle URL
+  const scriptURL: string | undefined = NativeModules?.SourceCode?.scriptURL;
+  if (scriptURL) {
+    const match = scriptURL.match(/^https?:\/\/([^:/]+)/);
+    if (match && match[1] && match[1] !== 'localhost' && match[1] !== '127.0.0.1') {
+      return `http://${match[1]}:5000/api`;
+    }
+  }
+
+  // Fallback to active Wi-Fi LAN IP
+  return 'http://10.83.112.114:5000/api';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 const FETCH_TIMEOUT_MS = 4000;
 
