@@ -1,5 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Medicine, AdherenceLog, AppSettings, AdherenceStatus } from '../types';
+import {
+  getMedicinesApi,
+  saveMedicineApi,
+  deleteMedicineApi,
+  updateSupplyApi,
+  getAdherenceLogsApi,
+  logAdherenceApi,
+  getSettingsApi,
+  saveSettingsApi,
+} from '../services/api';
 
 const MEDICINES_KEY = '@caremeds_medicines';
 const ADHERENCE_KEY = '@caremeds_adherence_logs';
@@ -72,6 +82,18 @@ let memoryLogs: AdherenceLog[] | null = null;
 let memorySettings: AppSettings = DEFAULT_SETTINGS;
 
 export async function getMedicines(): Promise<Medicine[]> {
+  // First attempt to fetch from backend API
+  try {
+    const remote = await getMedicinesApi();
+    if (remote && Array.isArray(remote) && remote.length > 0) {
+      memoryMedicines = remote;
+      await AsyncStorage.setItem(MEDICINES_KEY, JSON.stringify(remote)).catch(() => {});
+      return remote;
+    }
+  } catch {
+    // Graceful fallback to local storage
+  }
+
   try {
     const data = await AsyncStorage.getItem(MEDICINES_KEY);
     if (!data) {
@@ -123,6 +145,10 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
   } catch (e) {
     console.warn('AsyncStorage saveMedicine warning:', e);
   }
+
+  // Asynchronously sync with backend API
+  saveMedicineApi(medicine, existingId).catch(() => {});
+
   return updatedMedicine;
 }
 
@@ -145,6 +171,9 @@ export async function deleteMedicine(id: string): Promise<void> {
   } catch (e) {
     console.warn('AsyncStorage delete adherence logs warning:', e);
   }
+
+  // Sync deletion with backend API
+  deleteMedicineApi(id).catch(() => {});
 }
 
 export async function updateSupply(id: string, count: number): Promise<void> {
@@ -158,10 +187,23 @@ export async function updateSupply(id: string, count: number): Promise<void> {
     } catch (e) {
       console.warn('AsyncStorage updateSupply warning:', e);
     }
+    updateSupplyApi(id, count).catch(() => {});
   }
 }
 
 export async function getAdherenceLogs(): Promise<AdherenceLog[]> {
+  // First attempt to fetch from backend API
+  try {
+    const remote = await getAdherenceLogsApi();
+    if (remote && Array.isArray(remote)) {
+      memoryLogs = remote;
+      await AsyncStorage.setItem(ADHERENCE_KEY, JSON.stringify(remote)).catch(() => {});
+      return remote;
+    }
+  } catch {
+    // Graceful fallback to local storage
+  }
+
   try {
     const data = await AsyncStorage.getItem(ADHERENCE_KEY);
     const parsed = data ? JSON.parse(data) : [];
@@ -233,10 +275,24 @@ export async function logAdherence(
     }
   }
 
+  // Asynchronously sync with backend API
+  logAdherenceApi(medicineId, medicineName, dosage, scheduledTime, dateString, status, notes).catch(() => {});
+
   return record;
 }
 
 export async function getSettings(): Promise<AppSettings> {
+  try {
+    const remote = await getSettingsApi();
+    if (remote) {
+      memorySettings = remote;
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(remote)).catch(() => {});
+      return remote;
+    }
+  } catch {
+    // Fallback to local storage
+  }
+
   try {
     const data = await AsyncStorage.getItem(SETTINGS_KEY);
     const parsed = data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
@@ -256,5 +312,8 @@ export async function saveSettings(settings: Partial<AppSettings>): Promise<AppS
   } catch (e) {
     console.warn('AsyncStorage saveSettings warning:', e);
   }
+
+  saveSettingsApi(updated).catch(() => {});
+
   return updated;
 }
