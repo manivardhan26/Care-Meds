@@ -28,9 +28,12 @@ export interface AdherenceLog {
   notes?: string;
 }
 
+export type VoiceLanguage = 'en-US' | 'te-IN';
+
 export interface AppSettings {
   voiceRemindersEnabled: boolean;
   soundAlertsEnabled: boolean;
   snoozeMinutes: number;
   isDarkMode: boolean;
+  voiceLanguage?: VoiceLanguage;
 }

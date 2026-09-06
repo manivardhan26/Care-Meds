@@ -10,7 +10,7 @@
       "frequency": "Once daily",
       "reminderTime": "08:00 AM",
       "timeOfDay": "Morning",
-      "supplyCount": 28,
+      "supplyCount": 27,
       "createdAt": 1788286000293
     },
     {
@@ -36,7 +36,7 @@
       "frequency": "Once daily",
       "reminderTime": "06:00 PM",
       "timeOfDay": "Evening",
-      "supplyCount": 45,
+      "supplyCount": 44,
       "createdAt": 1788545200293
     },
     {
@@ -53,11 +53,33 @@
       "createdAt": 1785262000295
     }
   ],
-  "adherenceLogs": [],
+  "adherenceLogs": [
+    {
+      "id": "log_1788720938471_7635",
+      "medicineId": "med_3",
+      "medicineName": "Metformin",
+      "dosage": "500mg",
+      "scheduledTime": "06:00 PM",
+      "dateString": "2026-09-06",
+      "actionTimestamp": 1788720938471,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1788720922257_4udv",
+      "medicineId": "med_1",
+      "medicineName": "Aspirin Cardio",
+      "dosage": "81mg",
+      "scheduledTime": "08:00 AM",
+      "dateString": "2026-09-06",
+      "actionTimestamp": 1788720922257,
+      "status": "TAKEN"
+    }
+  ],
   "settings": {
     "voiceRemindersEnabled": true,
     "soundAlertsEnabled": true,
     "snoozeMinutes": 15,
-    "isDarkMode": false
+    "isDarkMode": true,
+    "voiceLanguage": "te-IN"
   }
 }

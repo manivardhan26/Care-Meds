@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   soundAlertsEnabled: true,
   snoozeMinutes: 15,
   isDarkMode: false,
+  voiceLanguage: 'te-IN',
 };
 
 const SEED_MEDICINES: Medicine[] = [

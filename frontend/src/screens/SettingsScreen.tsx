@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { AppSettings } from '../types';
 import { getSettings, saveSettings } from '../storage/medicineStorage';
-import { speakText } from '../utils/voiceReminder';
+import { speakText, TELUGU_VOICE_SUGGESTIONS } from '../utils/voiceReminder';
 
 export default function SettingsScreen() {
   const [settings, setSettings] = useState<AppSettings>({
@@ -33,8 +33,22 @@ export default function SettingsScreen() {
     setSettings(updated);
   };
 
+  const [playingId, setPlayingId] = useState<string | null>(null);
+
   const handleTestVoice = () => {
-    speakText('This is a test of your CareMeds voice reminder. Have you taken your medicine today?');
+    if (settings.voiceLanguage === 'te-IN') {
+      speakText('ఇది కేర్‌మెడ్స్ వాయిస్ రిమైండర్ పరీక్ష. మీరు ఈరోజు మీ మందులు వేసుకున్నారా?', 'te-IN');
+    } else {
+      speakText('This is a test of your CareMeds voice reminder. Have you taken your medicine today?', 'en-US');
+    }
+  };
+
+  const handlePlaySuggestion = async (suggestion: any) => {
+    setPlayingId(suggestion.id);
+    await speakText(suggestion.teluguText, 'te-IN');
+    setTimeout(() => {
+      setPlayingId(null);
+    }, 4500);
   };
 
   return (
@@ -63,12 +77,106 @@ export default function SettingsScreen() {
           </View>
 
           {settings.voiceRemindersEnabled && (
-            <TouchableOpacity style={styles.testVoiceButton} onPress={handleTestVoice}>
-              <Ionicons name="volume-high-outline" size={20} color={Colors.primary} />
-              <Text style={styles.testVoiceText}>Test Voice Reminder</Text>
-            </TouchableOpacity>
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.subLabel}>Voice Language (వాయిస్ భాష)</Text>
+              <View style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.snoozeChip,
+                    (settings.voiceLanguage === 'te-IN' || !settings.voiceLanguage) && styles.snoozeChipActive,
+                  ]}
+                  onPress={() => update({ voiceLanguage: 'te-IN' })}
+                >
+                  <Text
+                    style={[
+                      styles.snoozeChipText,
+                      (settings.voiceLanguage === 'te-IN' || !settings.voiceLanguage) && styles.snoozeChipTextActive,
+                    ]}
+                  >
+                    తెలుగు (Telugu)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.snoozeChip,
+                    settings.voiceLanguage === 'en-US' && styles.snoozeChipActive,
+                  ]}
+                  onPress={() => update({ voiceLanguage: 'en-US' })}
+                >
+                  <Text
+                    style={[
+                      styles.snoozeChipText,
+                      settings.voiceLanguage === 'en-US' && styles.snoozeChipTextActive,
+                    ]}
+                  >
+                    English
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={styles.testVoiceButton} onPress={handleTestVoice}>
+                <Ionicons name="volume-high-outline" size={20} color={Colors.primary} />
+                <Text style={styles.testVoiceText}>
+                  {settings.voiceLanguage === 'te-IN' ? 'వాయిస్ రిమైండర్ పరీక్షించండి (Test Telugu Voice)' : 'Test Voice Reminder'}
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
+
+        {/* Telugu Voice Suggestions Card */}
+        {settings.voiceRemindersEnabled && (
+          <View style={styles.card}>
+            <View style={styles.suggestionsHeader}>
+              <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
+                <Ionicons name="chatbubble-ellipses" size={22} color="#0284C7" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>తెలుగు వాయిస్ సూచనలు</Text>
+                <Text style={styles.rowSubtitle}>Telugu Voice Prompts & Suggestions</Text>
+              </View>
+            </View>
+
+            <Text style={styles.suggestionsTip}>
+              మందుల సమయం, ధ్రువీకరణ, రీఫిల్ మరియు ఆరోగ్య సూచనల ఆడియో వినడానికి క్రింది బటన్ నొక్కండి:
+            </Text>
+
+            <View style={styles.suggestionsList}>
+              {TELUGU_VOICE_SUGGESTIONS.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.suggestionCard,
+                    playingId === item.id && styles.suggestionCardActive,
+                  ]}
+                  onPress={() => handlePlaySuggestion(item)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.suggestionTagRow}>
+                      <Text style={styles.suggestionCategory}>{item.categoryTelugu}</Text>
+                      <Text style={styles.suggestionTitleEn}>• {item.titleEnglish}</Text>
+                    </View>
+                    <Text style={styles.suggestionTeluguText}>{item.teluguText}</Text>
+                    <Text style={styles.suggestionEnglishText}>{item.englishText}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.playIconButton,
+                      playingId === item.id && styles.playIconButtonActive,
+                    ]}
+                  >
+                    <Ionicons
+                      name={playingId === item.id ? 'volume-high' : 'volume-medium-outline'}
+                      size={22}
+                      color={playingId === item.id ? '#FFF' : Colors.primary}
+                    />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Timing & Alerts Card */}
         <View style={styles.card}>
@@ -298,5 +406,80 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: 'bold',
     marginTop: 10,
+  },
+  suggestionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  suggestionsTip: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  suggestionsList: {
+    gap: 12,
+  },
+  suggestionCard: {
+    backgroundColor: Colors.background,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  suggestionCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryContainer,
+  },
+  suggestionTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  suggestionCategory: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  suggestionTitleEn: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  suggestionTeluguText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+    lineHeight: 22,
+    marginVertical: 2,
+  },
+  suggestionEnglishText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+  },
+  playIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playIconButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
 });

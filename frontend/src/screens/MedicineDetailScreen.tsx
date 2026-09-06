@@ -10,9 +10,10 @@ import {
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
-import { Medicine } from '../types';
-import { getMedicines, deleteMedicine, updateSupply } from '../storage/medicineStorage';
+import { Medicine, AppSettings } from '../types';
+import { getMedicines, deleteMedicine, updateSupply, getSettings } from '../storage/medicineStorage';
 import { evaluateExpiry } from '../utils/expirySafety';
+import { speakReminder, speakExpiryWarning, stopSpeech } from '../utils/voiceReminder';
 
 export default function MedicineDetailScreen() {
   const navigation = useNavigation<any>();
@@ -20,16 +21,23 @@ export default function MedicineDetailScreen() {
   const { medicineId } = route.params;
 
   const [medicine, setMedicine] = useState<Medicine | null>(null);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const load = useCallback(async () => {
-    const meds = await getMedicines();
+    const [meds, appSettings] = await Promise.all([getMedicines(), getSettings()]);
     const found = meds.find((m) => m.id === medicineId);
     setMedicine(found || null);
+    setSettings(appSettings);
   }, [medicineId]);
 
   useFocusEffect(
     useCallback(() => {
       load();
+      return () => {
+        stopSpeech();
+        setIsSpeaking(false);
+      };
     }, [load])
   );
 
@@ -43,6 +51,22 @@ export default function MedicineDetailScreen() {
 
   const expiry = evaluateExpiry(medicine.expiryDate);
   const isExpired = expiry.state === 'EXPIRED';
+
+  const handlePlayVoiceGuide = () => {
+    if (isSpeaking) {
+      stopSpeech();
+      setIsSpeaking(false);
+      return;
+    }
+    const lang = settings?.voiceLanguage || 'te-IN';
+    setIsSpeaking(true);
+    if (isExpired) {
+      speakExpiryWarning(medicine.name, lang);
+    } else {
+      speakReminder(medicine.name, medicine.dosage, medicine.instructions, lang);
+    }
+    setTimeout(() => setIsSpeaking(false), 6000);
+  };
   const isExpiringSoon = expiry.state === 'EXPIRING_SOON';
 
   const handleDelete = () => {
@@ -141,6 +165,36 @@ export default function MedicineDetailScreen() {
             </View>
           ) : null}
         </View>
+
+        {/* Telugu Voice Audio Guide Card */}
+        <TouchableOpacity
+          style={[styles.voiceGuideCard, isSpeaking && styles.voiceGuideCardActive]}
+          activeOpacity={0.8}
+          onPress={handlePlayVoiceGuide}
+        >
+          <View style={[styles.voiceGuideIcon, isSpeaking && styles.voiceGuideIconActive]}>
+            <Ionicons name={isSpeaking ? 'volume-high' : 'volume-medium'} size={24} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.voiceGuideTitle}>
+              {settings?.voiceLanguage === 'en-US'
+                ? 'Voice Medication Guide'
+                : 'తెలుగు వాయిస్ సూచనలు (Voice Guide)'}
+            </Text>
+            <Text style={styles.voiceGuideSubtitle}>
+              {isSpeaking
+                ? 'వాయిస్ సూచనలు ప్లే అవుతున్నాయి... (Speaking)'
+                : settings?.voiceLanguage === 'en-US'
+                ? 'Listen to dose, timing and instructions aloud'
+                : 'మోతాదు, సమయం మరియు సూచనలను తెలుగులో వినండి'}
+            </Text>
+          </View>
+          <Ionicons
+            name={isSpeaking ? 'stop-circle' : 'play-circle'}
+            size={32}
+            color={isSpeaking ? Colors.alertRed : Colors.primary}
+          />
+        </TouchableOpacity>
 
         {/* Cabinet Supply Counter */}
         <View style={styles.supplyCard}>
@@ -393,5 +447,46 @@ const styles = StyleSheet.create({
     color: Colors.alertRed,
     fontSize: 17,
     fontWeight: 'bold',
+  },
+  voiceGuideCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  voiceGuideCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.secondaryContainer,
+  },
+  voiceGuideIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  voiceGuideIconActive: {
+    backgroundColor: Colors.accentTeal,
+  },
+  voiceGuideTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+  },
+  voiceGuideSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
   },
 });
