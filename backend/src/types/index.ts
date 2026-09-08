@@ -14,6 +14,11 @@ export interface Medicine {
   timeOfDay: TimeOfDay;
   supplyCount: number;
   createdAt: number;
+  stockTrackingEnabled?: boolean;
+  currentQuantity?: number;
+  unitType?: string;
+  quantityPerDose?: number;
+  lowStockThreshold?: number;
 }
 
 export interface AdherenceLog {

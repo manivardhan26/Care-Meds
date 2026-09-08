@@ -7,11 +7,13 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  Switch,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
 import { getMedicines, saveMedicine } from '../storage/medicineStorage';
+import { getMedicineStockInfo } from '../utils/stockUtils';
 
 const FREQUENCIES = ['Once daily', 'Twice daily', 'Three times daily', 'As needed', 'Weekly'];
 
@@ -35,7 +37,21 @@ export default function AddEditMedicineScreen() {
   const [timeOfDay, setTimeOfDay] = useState('Morning');
   const [expiryDate, setExpiryDate] = useState(initialValues?.expiryDate || '');
   const [instructions, setInstructions] = useState(initialValues?.instructions || '');
-  const [supplyCountStr, setSupplyCountStr] = useState(initialValues?.supplyCount?.toString() || '30');
+
+  // Stock tracking state (Optional)
+  const [stockTrackingEnabled, setStockTrackingEnabled] = useState(
+    initialValues?.stockTrackingEnabled !== undefined ? Boolean(initialValues.stockTrackingEnabled) : true
+  );
+  const [currentQuantityStr, setCurrentQuantityStr] = useState(
+    initialValues?.currentQuantity?.toString() || initialValues?.supplyCount?.toString() || '30'
+  );
+  const [unitType, setUnitType] = useState(initialValues?.unitType || 'tablets');
+  const [quantityPerDoseStr, setQuantityPerDoseStr] = useState(
+    initialValues?.quantityPerDose?.toString() || '1'
+  );
+  const [lowStockThresholdStr, setLowStockThresholdStr] = useState(
+    initialValues?.lowStockThreshold?.toString() || '3'
+  );
 
   useEffect(() => {
     if (existingMedicineId) {
@@ -50,7 +66,12 @@ export default function AddEditMedicineScreen() {
           setTimeOfDay(found.timeOfDay);
           setExpiryDate(found.expiryDate);
           setInstructions(found.instructions || found.notes);
-          setSupplyCountStr(found.supplyCount.toString());
+          const stock = getMedicineStockInfo(found);
+          setStockTrackingEnabled(stock.enabled);
+          setCurrentQuantityStr(stock.currentQuantity.toString());
+          setUnitType(stock.unitType);
+          setQuantityPerDoseStr(stock.quantityPerDose.toString());
+          setLowStockThresholdStr(stock.lowStockThreshold.toString());
         }
       })();
     }
@@ -62,7 +83,12 @@ export default function AddEditMedicineScreen() {
       return;
     }
 
-    const supply = parseInt(supplyCountStr, 10) || 30;
+    const parsedQty = parseInt(currentQuantityStr, 10);
+    const quantity = isNaN(parsedQty) ? 0 : Math.max(0, parsedQty);
+    const parsedThreshold = parseInt(lowStockThresholdStr, 10);
+    const threshold = isNaN(parsedThreshold) ? 3 : Math.max(0, parsedThreshold);
+    const parsedDose = parseInt(quantityPerDoseStr, 10);
+    const dose = isNaN(parsedDose) ? 1 : Math.max(1, parsedDose);
 
     await saveMedicine(
       {
@@ -74,7 +100,12 @@ export default function AddEditMedicineScreen() {
         expiryDate: expiryDate.trim() || '2027-12-31',
         instructions: instructions.trim(),
         notes: instructions.trim(),
-        supplyCount: supply,
+        supplyCount: quantity,
+        stockTrackingEnabled,
+        currentQuantity: quantity,
+        unitType: unitType.trim() || 'tablets',
+        quantityPerDose: dose,
+        lowStockThreshold: threshold,
       },
       existingMedicineId
     );
@@ -226,17 +257,137 @@ export default function AddEditMedicineScreen() {
           />
         </View>
 
-        {/* Supply Count */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Pill / Dose Count in Cabinet</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="30"
-            placeholderTextColor={Colors.textMuted}
-            value={supplyCountStr}
-            onChangeText={setSupplyCountStr}
-            keyboardType="numeric"
-          />
+        {/* Medicine Stock (Optional) */}
+        <View style={styles.stockCard}>
+          <View style={styles.stockCardHeader}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="cube-outline" size={24} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stockCardTitle}>Medicine Stock (Optional)</Text>
+                <Text style={styles.stockCardSubtitle}>
+                  Track remaining supply and get low stock warnings
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={stockTrackingEnabled}
+              onValueChange={setStockTrackingEnabled}
+              trackColor={{ false: Colors.border, true: Colors.primaryContainer }}
+              thumbColor={stockTrackingEnabled ? Colors.primary : '#FFF'}
+            />
+          </View>
+
+          {stockTrackingEnabled && (
+            <View style={styles.stockFields}>
+              {/* Current Quantity */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Current Quantity Remaining</Text>
+                <View style={styles.stepperRow}>
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => {
+                      const cur = parseInt(currentQuantityStr, 10) || 0;
+                      setCurrentQuantityStr(Math.max(0, cur - 1).toString());
+                    }}
+                  >
+                    <Ionicons name="remove" size={24} color={Colors.primary} />
+                  </TouchableOpacity>
+
+                  <TextInput
+                    style={styles.stepperInput}
+                    value={currentQuantityStr}
+                    onChangeText={setCurrentQuantityStr}
+                    keyboardType="numeric"
+                    textAlign="center"
+                    placeholder="30"
+                    placeholderTextColor={Colors.textMuted}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => {
+                      const cur = parseInt(currentQuantityStr, 10) || 0;
+                      setCurrentQuantityStr((cur + 1).toString());
+                    }}
+                  >
+                    <Ionicons name="add" size={24} color={Colors.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Quick Add Buttons */}
+                <View style={styles.quickAddRow}>
+                  {[10, 30, 60].map((num) => (
+                    <TouchableOpacity
+                      key={num}
+                      style={styles.quickAddChip}
+                      onPress={() => {
+                        const cur = parseInt(currentQuantityStr, 10) || 0;
+                        setCurrentQuantityStr((cur + num).toString());
+                      }}
+                    >
+                      <Ionicons name="add" size={16} color={Colors.primary} />
+                      <Text style={styles.quickAddChipText}>+{num} {unitType}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Unit Type Selection */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Unit Type</Text>
+                <View style={styles.unitChipContainer}>
+                  {['tablets', 'capsules', 'doses', 'pills'].map((u) => (
+                    <TouchableOpacity
+                      key={u}
+                      style={[
+                        styles.unitChip,
+                        unitType.toLowerCase() === u && styles.unitChipActive,
+                      ]}
+                      onPress={() => setUnitType(u)}
+                    >
+                      <Text
+                        style={[
+                          styles.unitChipText,
+                          unitType.toLowerCase() === u && styles.unitChipTextActive,
+                        ]}
+                      >
+                        {u.charAt(0).toUpperCase() + u.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Quantity Per Dose */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Quantity Used Per Dose</Text>
+                <TextInput
+                  style={styles.input}
+                  value={quantityPerDoseStr}
+                  onChangeText={setQuantityPerDoseStr}
+                  keyboardType="numeric"
+                  placeholder="1"
+                  placeholderTextColor={Colors.textMuted}
+                />
+              </View>
+
+              {/* Low Stock Warning Threshold */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Low Stock Warning At (Threshold)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={lowStockThresholdStr}
+                  onChangeText={setLowStockThresholdStr}
+                  keyboardType="numeric"
+                  placeholder="3"
+                  placeholderTextColor={Colors.textMuted}
+                />
+                <Text style={styles.hintText}>
+                  A calm notice will appear when remaining quantity reaches this number.
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Save Button */}
@@ -378,6 +529,112 @@ const styles = StyleSheet.create({
   freqChipTextActive: {
     color: Colors.onPrimaryContainer,
     fontWeight: 'bold',
+  },
+  stockCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  stockCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stockCardTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+  },
+  stockCardSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  stockFields: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    marginVertical: 6,
+  },
+  stepperBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.secondaryContainer,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepperInput: {
+    width: 90,
+    height: 52,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+    backgroundColor: Colors.background,
+  },
+  quickAddRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  quickAddChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.secondaryContainer,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 4,
+  },
+  quickAddChipText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  unitChipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  unitChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: Colors.background,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  unitChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  unitChipText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  unitChipTextActive: {
+    color: '#FFF',
+  },
+  hintText: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   saveButton: {
     backgroundColor: Colors.primary,

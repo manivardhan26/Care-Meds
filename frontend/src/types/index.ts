@@ -12,6 +12,11 @@ export interface Medicine {
   supplyCount: number;
   isLowSupply?: boolean;
   createdAt: number;
+  stockTrackingEnabled?: boolean;
+  currentQuantity?: number;
+  unitType?: string;
+  quantityPerDose?: number;
+  lowStockThreshold?: number;
 }
 
 export type AdherenceStatus = 'UPCOMING' | 'TAKEN' | 'MISSED' | 'SKIPPED' | 'SNOOZED';

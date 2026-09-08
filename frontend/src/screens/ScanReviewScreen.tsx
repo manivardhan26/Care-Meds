@@ -42,6 +42,11 @@ export default function ScanReviewScreen() {
       reminderTime: '08:00 AM',
       timeOfDay: 'Morning',
       supplyCount: supply,
+      stockTrackingEnabled: true,
+      currentQuantity: supply,
+      unitType: 'tablets',
+      quantityPerDose: 1,
+      lowStockThreshold: 3,
     });
 
     // Navigate to Home tab in root navigator

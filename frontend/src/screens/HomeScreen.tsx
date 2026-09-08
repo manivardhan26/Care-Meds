@@ -14,6 +14,7 @@ import { Medicine, AdherenceLog, AdherenceStatus, AppSettings } from '../types';
 import { getMedicines, getAdherenceLogs, logAdherence, getSettings } from '../storage/medicineStorage';
 import { evaluateExpiry } from '../utils/expirySafety';
 import { speakReminder, speakTakenConfirmation, speakExpiryWarning } from '../utils/voiceReminder';
+import { getMedicineStockInfo } from '../utils/stockUtils';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
@@ -156,6 +157,7 @@ export default function HomeScreen() {
           medicines.map((med) => {
             const status = logsForTodayMap.get(med.id) || 'UPCOMING';
             const expiry = evaluateExpiry(med.expiryDate);
+            const stockInfo = getMedicineStockInfo(med);
             const isTaken = status === 'TAKEN';
             const isExpired = expiry.state === 'EXPIRED';
 
@@ -176,6 +178,40 @@ export default function HomeScreen() {
                     <Text style={styles.medDosageTime}>
                       {med.dosage} • {med.reminderTime}
                     </Text>
+                    {stockInfo.enabled && (
+                      <View style={styles.stockBadgeRow}>
+                        <Ionicons
+                          name={
+                            stockInfo.isOutOfStock
+                              ? 'alert-circle'
+                              : stockInfo.isLowStock
+                              ? 'warning'
+                              : 'cube-outline'
+                          }
+                          size={15}
+                          color={
+                            stockInfo.isOutOfStock
+                              ? Colors.alertRed
+                              : stockInfo.isLowStock
+                              ? Colors.warningAmber
+                              : Colors.textMuted
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.stockBadgeText,
+                            stockInfo.isLowStock && styles.stockBadgeTextLow,
+                            stockInfo.isOutOfStock && styles.stockBadgeTextOut,
+                          ]}
+                        >
+                          {stockInfo.isOutOfStock
+                            ? 'No medicine remaining.'
+                            : stockInfo.isLowStock
+                            ? `Only ${stockInfo.currentQuantity} ${stockInfo.unitType} remaining.`
+                            : `${stockInfo.currentQuantity} ${stockInfo.unitType} remaining`}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                   <TouchableOpacity
                     style={styles.speakerBtn}
@@ -393,6 +429,25 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '600',
     marginTop: 4,
+  },
+  stockBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
+  stockBadgeText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  stockBadgeTextLow: {
+    color: Colors.warningAmber,
+    fontWeight: '700',
+  },
+  stockBadgeTextOut: {
+    color: Colors.alertRed,
+    fontWeight: '700',
   },
   statusBadge: {
     backgroundColor: Colors.primaryContainer,

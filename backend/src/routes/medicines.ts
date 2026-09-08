@@ -30,10 +30,31 @@ medicinesRouter.get('/:id', (req: Request, res: Response) => {
 // POST /api/medicines - Create new medicine
 medicinesRouter.post('/', (req: Request, res: Response) => {
   try {
-    const { name, dosage, instructions, notes, expiryDate, frequency, reminderTime, timeOfDay, supplyCount } = req.body;
+    const {
+      name,
+      dosage,
+      instructions,
+      notes,
+      expiryDate,
+      frequency,
+      reminderTime,
+      timeOfDay,
+      supplyCount,
+      stockTrackingEnabled,
+      currentQuantity,
+      unitType,
+      quantityPerDose,
+      lowStockThreshold,
+    } = req.body;
+
     if (!name || !dosage) {
       return res.status(400).json({ error: 'Name and dosage are required' });
     }
+
+    const resolvedQuantity = typeof currentQuantity === 'number'
+      ? Math.max(0, currentQuantity)
+      : (typeof supplyCount === 'number' ? Math.max(0, supplyCount) : 30);
+
     const created = db.saveMedicine({
       name,
       dosage,
@@ -43,7 +64,12 @@ medicinesRouter.post('/', (req: Request, res: Response) => {
       frequency: frequency || 'Once daily',
       reminderTime: reminderTime || '08:00 AM',
       timeOfDay: timeOfDay || 'Morning',
-      supplyCount: typeof supplyCount === 'number' ? supplyCount : 30,
+      supplyCount: resolvedQuantity,
+      stockTrackingEnabled: typeof stockTrackingEnabled === 'boolean' ? stockTrackingEnabled : true,
+      currentQuantity: resolvedQuantity,
+      unitType: unitType || 'tablets',
+      quantityPerDose: typeof quantityPerDose === 'number' && quantityPerDose > 0 ? quantityPerDose : 1,
+      lowStockThreshold: typeof lowStockThreshold === 'number' && lowStockThreshold >= 0 ? lowStockThreshold : 3,
     });
     res.status(201).json(created);
   } catch (error) {
@@ -59,7 +85,27 @@ medicinesRouter.put('/:id', (req: Request, res: Response) => {
     if (!existing) {
       return res.status(404).json({ error: 'Medicine not found' });
     }
-    const { name, dosage, instructions, notes, expiryDate, frequency, reminderTime, timeOfDay, supplyCount } = req.body;
+    const {
+      name,
+      dosage,
+      instructions,
+      notes,
+      expiryDate,
+      frequency,
+      reminderTime,
+      timeOfDay,
+      supplyCount,
+      stockTrackingEnabled,
+      currentQuantity,
+      unitType,
+      quantityPerDose,
+      lowStockThreshold,
+    } = req.body;
+
+    const resolvedQuantity = typeof currentQuantity === 'number'
+      ? Math.max(0, currentQuantity)
+      : (typeof supplyCount === 'number' ? Math.max(0, supplyCount) : (existing.currentQuantity ?? existing.supplyCount));
+
     const updated = db.saveMedicine(
       {
         name: name !== undefined ? name : existing.name,
@@ -70,7 +116,12 @@ medicinesRouter.put('/:id', (req: Request, res: Response) => {
         frequency: frequency !== undefined ? frequency : existing.frequency,
         reminderTime: reminderTime !== undefined ? reminderTime : existing.reminderTime,
         timeOfDay: timeOfDay !== undefined ? timeOfDay : existing.timeOfDay,
-        supplyCount: typeof supplyCount === 'number' ? supplyCount : existing.supplyCount,
+        supplyCount: resolvedQuantity,
+        stockTrackingEnabled: stockTrackingEnabled !== undefined ? stockTrackingEnabled : existing.stockTrackingEnabled,
+        currentQuantity: resolvedQuantity,
+        unitType: unitType !== undefined ? unitType : existing.unitType,
+        quantityPerDose: quantityPerDose !== undefined ? quantityPerDose : existing.quantityPerDose,
+        lowStockThreshold: lowStockThreshold !== undefined ? lowStockThreshold : existing.lowStockThreshold,
       },
       id
     );

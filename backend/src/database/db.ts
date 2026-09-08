@@ -167,7 +167,9 @@ class Database {
   public updateSupply(id: string, count: number): Medicine | null {
     const target = this.data.medicines.find((m) => m.id === id);
     if (!target) return null;
-    target.supplyCount = Math.max(0, count);
+    const safeCount = Math.max(0, count);
+    target.supplyCount = safeCount;
+    target.currentQuantity = safeCount;
     this.persist();
     return target;
   }
@@ -194,8 +196,10 @@ class Database {
     notes?: string
   ): AdherenceLog {
     const existingIndex = this.data.adherenceLogs.findIndex(
-      (l) => l.medicineId === medicineId && l.dateString === dateString
+      (l) => l.medicineId === medicineId && l.dateString === dateString && (!scheduledTime || l.scheduledTime === scheduledTime)
     );
+
+    const wasAlreadyTaken = existingIndex >= 0 && this.data.adherenceLogs[existingIndex].status === 'TAKEN';
 
     let record: AdherenceLog;
     if (existingIndex >= 0) {
@@ -221,11 +225,19 @@ class Database {
       this.data.adherenceLogs.unshift(record);
     }
 
-    // If taken, decrement supply by 1
-    if (status === 'TAKEN') {
+    // Deduct stock ONLY ONCE when transition to TAKEN occurs
+    // Snooze, Skip, or Missed never decrease stock
+    if (status === 'TAKEN' && !wasAlreadyTaken) {
       const med = this.data.medicines.find((m) => m.id === medicineId);
-      if (med && med.supplyCount > 0) {
-        med.supplyCount -= 1;
+      if (med) {
+        const trackingEnabled = med.stockTrackingEnabled !== false;
+        if (trackingEnabled) {
+          const qtyPerDose = typeof med.quantityPerDose === 'number' && med.quantityPerDose > 0 ? med.quantityPerDose : 1;
+          const current = typeof med.currentQuantity === 'number' ? med.currentQuantity : med.supplyCount;
+          const newQty = Math.max(0, current - qtyPerDose);
+          med.currentQuantity = newQty;
+          med.supplyCount = newQty;
+        }
       }
     }
 
