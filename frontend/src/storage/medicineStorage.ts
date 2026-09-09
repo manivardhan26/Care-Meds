@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   soundAlertsEnabled: true,
   snoozeMinutes: 15,
   isDarkMode: false,
+  voiceLanguage: 'en-US',
 };
 
 const SEED_MEDICINES: Medicine[] = [
@@ -118,11 +119,34 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
   const medicines = await getMedicines();
   let updatedMedicine: Medicine;
 
+  const existing = existingId ? medicines.find((m) => m.id === existingId) : null;
+  const resolvedQty = typeof medicine.currentQuantity === 'number'
+    ? Math.max(0, medicine.currentQuantity)
+    : (typeof medicine.supplyCount === 'number'
+      ? Math.max(0, medicine.supplyCount)
+      : (existing?.currentQuantity ?? existing?.supplyCount ?? 30));
+
+  const normalizedMedicine: Omit<Medicine, 'id' | 'createdAt'> = {
+    ...medicine,
+    supplyCount: resolvedQty,
+    currentQuantity: resolvedQty,
+    stockTrackingEnabled: typeof medicine.stockTrackingEnabled === 'boolean'
+      ? medicine.stockTrackingEnabled
+      : (existing?.stockTrackingEnabled ?? true),
+    unitType: medicine.unitType?.trim() || existing?.unitType || 'tablets',
+    quantityPerDose: typeof medicine.quantityPerDose === 'number' && medicine.quantityPerDose > 0
+      ? medicine.quantityPerDose
+      : (existing?.quantityPerDose ?? 1),
+    lowStockThreshold: typeof medicine.lowStockThreshold === 'number' && medicine.lowStockThreshold >= 0
+      ? medicine.lowStockThreshold
+      : (existing?.lowStockThreshold ?? 3),
+  };
+
   if (existingId) {
     updatedMedicine = {
-      ...medicine,
+      ...normalizedMedicine,
       id: existingId,
-      createdAt: medicines.find((m) => m.id === existingId)?.createdAt || Date.now(),
+      createdAt: existing?.createdAt || Date.now(),
     };
     const index = medicines.findIndex((m) => m.id === existingId);
     if (index >= 0) {
@@ -132,7 +156,7 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
     }
   } else {
     updatedMedicine = {
-      ...medicine,
+      ...normalizedMedicine,
       id: `med_${Date.now()}`,
       createdAt: Date.now(),
     };
@@ -147,7 +171,7 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
   }
 
   // Asynchronously sync with backend API
-  saveMedicineApi(medicine, existingId).catch(() => {});
+  saveMedicineApi(normalizedMedicine, existingId).catch(() => {});
 
   return updatedMedicine;
 }
@@ -180,14 +204,16 @@ export async function updateSupply(id: string, count: number): Promise<void> {
   const medicines = await getMedicines();
   const target = medicines.find((m) => m.id === id);
   if (target) {
-    target.supplyCount = Math.max(0, count);
+    const safeCount = Math.max(0, count);
+    target.supplyCount = safeCount;
+    target.currentQuantity = safeCount;
     memoryMedicines = medicines;
     try {
       await AsyncStorage.setItem(MEDICINES_KEY, JSON.stringify(medicines));
     } catch (e) {
       console.warn('AsyncStorage updateSupply warning:', e);
     }
-    updateSupplyApi(id, count).catch(() => {});
+    updateSupplyApi(id, safeCount).catch(() => {});
   }
 }
 
@@ -226,8 +252,10 @@ export async function logAdherence(
 ): Promise<AdherenceLog> {
   const logs = await getAdherenceLogs();
   const existingIndex = logs.findIndex(
-    (l) => l.medicineId === medicineId && l.dateString === dateString
+    (l) => l.medicineId === medicineId && l.dateString === dateString && (!scheduledTime || l.scheduledTime === scheduledTime)
   );
+
+  const wasAlreadyTaken = existingIndex >= 0 && logs[existingIndex].status === 'TAKEN';
 
   let record: AdherenceLog;
   if (existingIndex >= 0) {
@@ -260,17 +288,25 @@ export async function logAdherence(
     console.warn('AsyncStorage logAdherence warning:', e);
   }
 
-  // If taken, decrement supply count by 1
-  if (status === 'TAKEN') {
+  // Deduct stock ONLY ONCE when transition to TAKEN occurs
+  // Snooze, Skip, or Missed never decrease stock
+  if (status === 'TAKEN' && !wasAlreadyTaken) {
     const medicines = await getMedicines();
     const med = medicines.find((m) => m.id === medicineId);
-    if (med && med.supplyCount > 0) {
-      med.supplyCount -= 1;
-      memoryMedicines = medicines;
-      try {
-        await AsyncStorage.setItem(MEDICINES_KEY, JSON.stringify(medicines));
-      } catch (e) {
-        console.warn('AsyncStorage decrement supply warning:', e);
+    if (med) {
+      const trackingEnabled = med.stockTrackingEnabled !== false;
+      if (trackingEnabled) {
+        const qtyPerDose = typeof med.quantityPerDose === 'number' && med.quantityPerDose > 0 ? med.quantityPerDose : 1;
+        const current = typeof med.currentQuantity === 'number' ? med.currentQuantity : med.supplyCount;
+        const newQty = Math.max(0, current - qtyPerDose);
+        med.currentQuantity = newQty;
+        med.supplyCount = newQty;
+        memoryMedicines = medicines;
+        try {
+          await AsyncStorage.setItem(MEDICINES_KEY, JSON.stringify(medicines));
+        } catch (e) {
+          console.warn('AsyncStorage decrement supply warning:', e);
+        }
       }
     }
   }

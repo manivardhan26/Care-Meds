@@ -19,6 +19,7 @@ export default function SettingsScreen() {
     soundAlertsEnabled: true,
     snoozeMinutes: 15,
     isDarkMode: false,
+    voiceLanguage: 'en-US',
   });
 
   useEffect(() => {
@@ -34,7 +35,10 @@ export default function SettingsScreen() {
   };
 
   const handleTestVoice = () => {
-    speakText('This is a test of your CareMeds voice reminder. Have you taken your medicine today?');
+    speakText(
+      'This is a test of your CareMeds voice reminder. Have you taken your medicine today?',
+      'en-US'
+    );
   };
 
   return (
@@ -63,10 +67,13 @@ export default function SettingsScreen() {
           </View>
 
           {settings.voiceRemindersEnabled && (
-            <TouchableOpacity style={styles.testVoiceButton} onPress={handleTestVoice}>
-              <Ionicons name="volume-high-outline" size={20} color={Colors.primary} />
-              <Text style={styles.testVoiceText}>Test Voice Reminder</Text>
-            </TouchableOpacity>
+            <>
+              <View style={styles.divider} />
+              <TouchableOpacity style={styles.testVoiceButton} onPress={handleTestVoice}>
+                <Ionicons name="volume-high-outline" size={20} color={Colors.primary} />
+                <Text style={styles.testVoiceText}>Test Voice Reminder</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
 
@@ -141,14 +148,15 @@ export default function SettingsScreen() {
         {/* Healthcare Disclaimer */}
         <View style={styles.disclaimerCard}>
           <View style={styles.disclaimerHeader}>
-            <Ionicons name="shield-checkmark-outline" size={22} color={Colors.primary} />
-            <Text style={styles.disclaimerTitle}>Healthcare Notice</Text>
+            <Ionicons name="information-circle" size={22} color={Colors.primary} />
+            <Text style={styles.disclaimerTitle}>CareMeds Reminder App</Text>
           </View>
           <Text style={styles.disclaimerText}>
-            CareMeds is a personal medication-management assistant only. It never diagnoses conditions,
-            recommends medications, or changes dosage. Always consult your doctor or pharmacist.
+            CareMeds is a supportive medicine adherence tool designed to assist daily medication
+            routines. Always follow the explicit prescription instructions provided by your
+            licensed healthcare physician and pharmacist.
           </Text>
-          <Text style={styles.versionText}>CareMeds v1.0 • Built with Care</Text>
+          <Text style={styles.versionText}>CareMeds v1.0.0 • Offline Ready</Text>
         </View>
       </ScrollView>
     </View>
@@ -161,7 +169,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   headerBar: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 54,
     paddingBottom: 16,
     backgroundColor: Colors.surface,
@@ -169,19 +177,25 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: 'bold',
     color: Colors.textPrimary,
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 80,
-    gap: 16,
+    paddingBottom: 40,
   },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
     padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
     elevation: 1,
   },
   cardSectionTitle: {
@@ -193,7 +207,6 @@ const styles = StyleSheet.create({
   cardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
   iconCircle: {
@@ -205,40 +218,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rowTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
     color: Colors.textPrimary,
   },
   rowSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 14,
   },
   testVoiceButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    borderRadius: 12,
-    height: 46,
-    marginTop: 14,
+    backgroundColor: Colors.secondaryContainer,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
   testVoiceText: {
-    color: Colors.primary,
+    fontSize: 14,
     fontWeight: 'bold',
-    fontSize: 15,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: 12,
+    color: Colors.primary,
   },
   subLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: Colors.textPrimary,
+    color: Colors.textSecondary,
     marginBottom: 10,
   },
   chipRow: {

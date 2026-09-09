@@ -12,6 +12,11 @@ export interface Medicine {
   supplyCount: number;
   isLowSupply?: boolean;
   createdAt: number;
+  stockTrackingEnabled?: boolean;
+  currentQuantity?: number;
+  unitType?: string;
+  quantityPerDose?: number;
+  lowStockThreshold?: number;
 }
 
 export type AdherenceStatus = 'UPCOMING' | 'TAKEN' | 'MISSED' | 'SKIPPED' | 'SNOOZED';
@@ -43,9 +48,12 @@ export interface DailyMedicineItem {
   expiryStatus: ExpiryStatus;
 }
 
+export type VoiceLanguage = 'en-US' | 'te-IN';
+
 export interface AppSettings {
   voiceRemindersEnabled: boolean;
   soundAlertsEnabled: boolean;
   snoozeMinutes: number;
   isDarkMode: boolean;
+  voiceLanguage?: VoiceLanguage;
 }

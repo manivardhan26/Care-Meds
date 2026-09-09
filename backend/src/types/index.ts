@@ -14,6 +14,11 @@ export interface Medicine {
   timeOfDay: TimeOfDay;
   supplyCount: number;
   createdAt: number;
+  stockTrackingEnabled?: boolean;
+  currentQuantity?: number;
+  unitType?: string;
+  quantityPerDose?: number;
+  lowStockThreshold?: number;
 }
 
 export interface AdherenceLog {
@@ -28,9 +33,12 @@ export interface AdherenceLog {
   notes?: string;
 }
 
+export type VoiceLanguage = 'en-US' | 'te-IN';
+
 export interface AppSettings {
   voiceRemindersEnabled: boolean;
   soundAlertsEnabled: boolean;
   snoozeMinutes: number;
   isDarkMode: boolean;
+  voiceLanguage?: VoiceLanguage;
 }

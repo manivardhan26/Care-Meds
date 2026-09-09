@@ -5,6 +5,7 @@ export const Colors = {
   primaryContainer: '#97F0FF',
   onPrimary: '#FFFFFF',
   onPrimaryContainer: '#001F24',
+  accentTeal: '#008B99',
 
   // Secondary
   secondary: '#4A6267',

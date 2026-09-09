@@ -10,23 +10,30 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../theme/colors';
-import { Medicine, AdherenceLog, AdherenceStatus } from '../types';
+import { Medicine, AdherenceLog, AdherenceStatus, AppSettings } from '../types';
 import { getMedicines, getAdherenceLogs, logAdherence, getSettings } from '../storage/medicineStorage';
 import { evaluateExpiry } from '../utils/expirySafety';
-import { speakReminder } from '../utils/voiceReminder';
+import { speakReminder, speakTakenConfirmation, speakExpiryWarning } from '../utils/voiceReminder';
+import { getMedicineStockInfo } from '../utils/stockUtils';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [logs, setLogs] = useState<AdherenceLog[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const todayIso = new Date().toISOString().split('T')[0];
 
   const loadData = useCallback(async () => {
-    const [medList, logList] = await Promise.all([getMedicines(), getAdherenceLogs()]);
+    const [medList, logList, appSettings] = await Promise.all([
+      getMedicines(),
+      getAdherenceLogs(),
+      getSettings(),
+    ]);
     setMedicines(medList);
     setLogs(logList);
+    setSettings(appSettings);
   }, []);
 
   useFocusEffect(
@@ -70,9 +77,9 @@ export default function HomeScreen() {
     await logAdherence(med.id, med.name, med.dosage, med.reminderTime, todayIso, status);
     
     // If setting enabled, speak voice confirmation
-    const settings = await getSettings();
-    if (settings.voiceRemindersEnabled && status === 'TAKEN') {
-      speakReminder(med.name, 'marked as taken. Good job!');
+    const currentSettings = settings || (await getSettings());
+    if (currentSettings.voiceRemindersEnabled && status === 'TAKEN') {
+      speakTakenConfirmation(med.name, 'en-US');
     }
     await loadData();
   };
@@ -102,6 +109,19 @@ export default function HomeScreen() {
             <Text style={styles.expiredNamesText}>
               Affected: {expiredMedicines.map((m) => m.name).join(', ')}
             </Text>
+            <TouchableOpacity
+              style={styles.voiceWarningBtn}
+              activeOpacity={0.8}
+              onPress={() =>
+                speakExpiryWarning(
+                  expiredMedicines.map((m) => m.name).join(', '),
+                  'en-US'
+                )
+              }
+            >
+              <Ionicons name="volume-high" size={20} color={Colors.alertRed} />
+              <Text style={styles.voiceWarningBtnText}>Listen to voice alert</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -137,6 +157,7 @@ export default function HomeScreen() {
           medicines.map((med) => {
             const status = logsForTodayMap.get(med.id) || 'UPCOMING';
             const expiry = evaluateExpiry(med.expiryDate);
+            const stockInfo = getMedicineStockInfo(med);
             const isTaken = status === 'TAKEN';
             const isExpired = expiry.state === 'EXPIRED';
 
@@ -157,7 +178,54 @@ export default function HomeScreen() {
                     <Text style={styles.medDosageTime}>
                       {med.dosage} • {med.reminderTime}
                     </Text>
+                    {stockInfo.enabled && (
+                      <View style={styles.stockBadgeRow}>
+                        <Ionicons
+                          name={
+                            stockInfo.isOutOfStock
+                              ? 'alert-circle'
+                              : stockInfo.isLowStock
+                              ? 'warning'
+                              : 'cube-outline'
+                          }
+                          size={15}
+                          color={
+                            stockInfo.isOutOfStock
+                              ? Colors.alertRed
+                              : stockInfo.isLowStock
+                              ? Colors.warningAmber
+                              : Colors.textMuted
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.stockBadgeText,
+                            stockInfo.isLowStock && styles.stockBadgeTextLow,
+                            stockInfo.isOutOfStock && styles.stockBadgeTextOut,
+                          ]}
+                        >
+                          {stockInfo.isOutOfStock
+                            ? 'No medicine remaining.'
+                            : stockInfo.isLowStock
+                            ? `Only ${stockInfo.currentQuantity} ${stockInfo.unitType} remaining.`
+                            : `${stockInfo.currentQuantity} ${stockInfo.unitType} remaining`}
+                        </Text>
+                      </View>
+                    )}
                   </View>
+                  <TouchableOpacity
+                    style={styles.speakerBtn}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (isExpired) {
+                        speakExpiryWarning(med.name, 'en-US');
+                      } else {
+                        speakReminder(med.name, med.dosage, 'en-US', med.instructions);
+                      }
+                    }}
+                  >
+                    <Ionicons name="volume-medium" size={20} color={Colors.primary} />
+                  </TouchableOpacity>
                   <View
                     style={[
                       styles.statusBadge,
@@ -362,6 +430,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 4,
   },
+  stockBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
+  stockBadgeText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  stockBadgeTextLow: {
+    color: Colors.warningAmber,
+    fontWeight: '700',
+  },
+  stockBadgeTextOut: {
+    color: Colors.alertRed,
+    fontWeight: '700',
+  },
   statusBadge: {
     backgroundColor: Colors.primaryContainer,
     paddingHorizontal: 12,
@@ -482,5 +569,32 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  voiceWarningBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: Colors.alertRed,
+  },
+  voiceWarningBtnText: {
+    color: Colors.alertRed,
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  speakerBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.secondaryContainer,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
   },
 });
