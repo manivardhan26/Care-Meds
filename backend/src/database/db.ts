@@ -13,6 +13,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   snoozeMinutes: 15,
   isDarkMode: false,
   voiceLanguage: 'en-US',
+  voiceGender: 'female',
+  patientName: 'CareMeds Patient',
+  patientAge: '',
 };
 
 const SEED_MEDICINES: Medicine[] = [

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,24 +8,31 @@ import {
   Alert,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { Medicine, AppSettings } from '../types';
 import { getMedicines, deleteMedicine, updateSupply, saveMedicine, getSettings } from '../storage/medicineStorage';
 import { evaluateExpiry } from '../utils/expirySafety';
 import { speakReminder, speakExpiryWarning, stopSpeech } from '../utils/voiceReminder';
-import { getMedicineStockInfo, COMMON_UNITS } from '../utils/stockUtils';
+import { getMedicineStockInfo } from '../utils/stockUtils';
+import { cancelMedicineNotification } from '../services/notificationService';
+
+const UNIT_OPTIONS = ['tablets', 'capsules', 'ml', 'drops', 'puffs', 'units'];
 
 export default function MedicineDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { medicineId } = route.params;
 
+  const { colors, isDarkMode } = useTheme();
+
   const [medicine, setMedicine] = useState<Medicine | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
 
   // Stock update modal state
   const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
@@ -51,6 +58,8 @@ export default function MedicineDetailScreen() {
     }, [load])
   );
 
+  const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
+
   if (!medicine) {
     return (
       <View style={styles.center}>
@@ -61,6 +70,7 @@ export default function MedicineDetailScreen() {
 
   const expiry = evaluateExpiry(medicine.expiryDate);
   const isExpired = expiry.state === 'EXPIRED';
+  const isExpiringSoon = expiry.state === 'EXPIRING_SOON';
   const stockInfo = getMedicineStockInfo(medicine);
 
   const handlePlayVoiceGuide = () => {
@@ -70,25 +80,26 @@ export default function MedicineDetailScreen() {
       return;
     }
     setIsSpeaking(true);
+    const lang = settings?.voiceLanguage || 'en-US';
     if (isExpired) {
-      speakExpiryWarning(medicine.name, 'en-US');
+      speakExpiryWarning(medicine.name, lang);
     } else {
-      speakReminder(medicine.name, medicine.dosage, 'en-US', medicine.instructions);
+      speakReminder(medicine.name, medicine.dosage, lang, medicine.instructions);
     }
     setTimeout(() => setIsSpeaking(false), 6000);
   };
-  const isExpiringSoon = expiry.state === 'EXPIRING_SOON';
 
   const handleDelete = () => {
     Alert.alert(
-      `Delete ${medicine.name}?`,
-      'Are you sure you want to delete this medicine and remove its reminder history?',
+      'Delete Medicine',
+      `Are you sure you want to remove ${medicine.name}? This will also remove its reminder schedule.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            await cancelMedicineNotification(medicine.id);
             await deleteMedicine(medicine.id);
             navigation.goBack();
           },
@@ -97,15 +108,7 @@ export default function MedicineDetailScreen() {
     );
   };
 
-  const handleAdjustSupply = async (delta: number) => {
-    const stockInfo = getMedicineStockInfo(medicine);
-    const newCount = Math.max(0, stockInfo.currentQuantity + delta);
-    await updateSupply(medicine.id, newCount);
-    setMedicine({ ...medicine, currentQuantity: newCount, supplyCount: newCount });
-  };
-
   const handleOpenUpdateModal = () => {
-    const stockInfo = getMedicineStockInfo(medicine);
     setEditQuantityStr(stockInfo.currentQuantity.toString());
     setEditUnitType(stockInfo.unitType);
     setEditThresholdStr(stockInfo.lowStockThreshold.toString());
@@ -113,349 +116,355 @@ export default function MedicineDetailScreen() {
     setIsUpdateModalVisible(true);
   };
 
-  const handleModalAdjust = (delta: number) => {
-    const current = parseInt(editQuantityStr, 10);
-    const safeCurrent = isNaN(current) ? 0 : current;
-    const next = Math.max(0, safeCurrent + delta);
-    setEditQuantityStr(next.toString());
+  const handleQuickAdd = (amount: number) => {
+    const current = parseInt(editQuantityStr, 10) || 0;
+    setEditQuantityStr((current + amount).toString());
   };
 
-  const handleSaveStock = async () => {
-    const qty = parseInt(editQuantityStr, 10);
-    const safeQty = isNaN(qty) ? 0 : Math.max(0, qty);
-    const threshold = parseInt(editThresholdStr, 10);
-    const safeThreshold = isNaN(threshold) ? 3 : Math.max(0, threshold);
-    const perDose = parseInt(editQtyPerDoseStr, 10);
-    const safePerDose = isNaN(perDose) ? 1 : Math.max(1, perDose);
+  const handleSaveStockUpdate = async () => {
+    const parsedQty = parseInt(editQuantityStr, 10);
+    const quantity = isNaN(parsedQty) ? 0 : Math.max(0, parsedQty);
+    const parsedThreshold = parseInt(editThresholdStr, 10);
+    const threshold = isNaN(parsedThreshold) ? 3 : Math.max(0, parsedThreshold);
+    const parsedDose = parseInt(editQtyPerDoseStr, 10);
+    const dose = isNaN(parsedDose) ? 1 : Math.max(1, parsedDose);
 
-    const updated: Medicine = {
-      ...medicine,
-      stockTrackingEnabled: true,
-      currentQuantity: safeQty,
-      supplyCount: safeQty,
-      unitType: editUnitType.trim() || 'tablets',
-      lowStockThreshold: safeThreshold,
-      quantityPerDose: safePerDose,
-    };
+    await saveMedicine(
+      {
+        ...medicine,
+        supplyCount: quantity,
+        currentQuantity: quantity,
+        stockTrackingEnabled: true,
+        unitType: editUnitType.trim() || 'tablets',
+        lowStockThreshold: threshold,
+        quantityPerDose: dose,
+      },
+      medicine.id
+    );
 
-    await saveMedicine(updated, medicine.id);
-    setMedicine(updated);
     setIsUpdateModalVisible(false);
+    await load();
   };
 
   return (
     <View style={styles.container}>
-      {/* Header Bar */}
-      <View style={styles.headerBar}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={26} color={Colors.textPrimary} />
+      {/* Top App Bar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Medicine Details</Text>
+
+        <Text style={styles.topBarTitle}>Medicine Details</Text>
+
         <TouchableOpacity
           style={styles.editButton}
           onPress={() => navigation.navigate('EditMedicine', { medicineId: medicine.id })}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="create-outline" size={24} color={Colors.primary} />
+          <Ionicons name="create-outline" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Critical Expiry Warning */}
-        {isExpired && (
-          <View style={styles.expiredCard}>
-            <View style={styles.expiredRow}>
-              <Ionicons name="alert-circle" size={32} color={Colors.alertRed} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.expiredTitle}>SAFETY ALERT</Text>
-                <Text style={styles.expiredText}>
-                  This medicine has expired. Please do not consume it.
-                </Text>
-              </View>
+        {/* Centered Medicine Photo (Reference Style) */}
+        <View style={styles.photoContainer}>
+          {medicine.imageUri && !imageLoadFailed ? (
+            <Image
+              source={{ uri: medicine.imageUri }}
+              style={styles.medicinePhoto}
+              resizeMode="contain"
+              onError={() => setImageLoadFailed(true)}
+            />
+          ) : (
+            <View style={[styles.photoFallback, { backgroundColor: isDarkMode ? colors.surfaceWarm : '#EDF4F5' }]}>
+              <Ionicons name="medkit" size={64} color={isDarkMode ? colors.accentTeal : colors.primary} />
             </View>
-            <Text style={styles.expiredSubText}>
-              Recorded Expiry Date: {medicine.expiryDate}. Please dispose of this medicine safely.
-            </Text>
-          </View>
-        )}
-
-        {/* Expiring Soon Notice */}
-        {isExpiringSoon && (
-          <View style={styles.warningCard}>
-            <Ionicons name="warning" size={26} color={Colors.warningAmber} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.warningTitle}>Expiring Soon</Text>
-              <Text style={styles.warningText}>{expiry.message}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Main Details Card */}
-        <View style={styles.detailsCard}>
-          <Text style={styles.medName}>{medicine.name}</Text>
-          <Text style={styles.medDosage}>Dosage: {medicine.dosage}</Text>
-
-          <View style={styles.divider} />
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Schedule & Frequency</Text>
-            <Text style={styles.detailValue}>
-              {medicine.reminderTime} ({medicine.frequency})
-            </Text>
-          </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Expiry Date</Text>
-            <Text style={styles.detailValue}>{medicine.expiryDate}</Text>
-          </View>
-
-          {medicine.instructions ? (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Instructions / Notes</Text>
-              <Text style={styles.detailValue}>{medicine.instructions}</Text>
-            </View>
-          ) : null}
+          )}
         </View>
 
-        {/* Voice Audio Guide Card */}
-        <TouchableOpacity
-          style={[styles.voiceGuideCard, isSpeaking && styles.voiceGuideCardActive]}
-          activeOpacity={0.8}
-          onPress={handlePlayVoiceGuide}
-        >
-          <View style={[styles.voiceGuideIcon, isSpeaking && styles.voiceGuideIconActive]}>
-            <Ionicons name={isSpeaking ? 'volume-high' : 'volume-medium'} size={24} color="#FFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.voiceGuideTitle}>Voice Medication Guide</Text>
-            <Text style={styles.voiceGuideSubtitle}>
-              {isSpeaking
-                ? 'Playing audio instructions...'
-                : 'Listen to dose, timing and instructions aloud'}
+        {/* Medicine Name & Status Row */}
+        <View style={styles.nameHeaderRow}>
+          <Text style={styles.medicineName}>{medicine.name}</Text>
+          <View
+            style={[
+              styles.statusBadge,
+              isExpired
+                ? styles.statusBadgeExpired
+                : isExpiringSoon
+                ? styles.statusBadgeWarning
+                : styles.statusBadgeActive,
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusBadgeText,
+                isExpired
+                  ? styles.statusTextExpired
+                  : isExpiringSoon
+                  ? styles.statusTextWarning
+                  : styles.statusTextActive,
+              ]}
+            >
+              {isExpired ? 'Expired' : isExpiringSoon ? 'Expiring Soon' : 'Active'}
             </Text>
           </View>
-          <Ionicons
-            name={isSpeaking ? 'stop-circle' : 'play-circle'}
-            size={32}
-            color={isSpeaking ? Colors.alertRed : Colors.primary}
-          />
-        </TouchableOpacity>
+        </View>
 
-        {/* Medicine Stock Section */}
-        <View style={styles.stockCard}>
-          <View style={styles.stockHeaderRow}>
-            <View style={styles.stockIconContainer}>
-              <Ionicons name="cube" size={26} color={Colors.primary} />
+        {/* Instructions / Description */}
+        <Text style={styles.instructionsText}>
+          {medicine.instructions || medicine.notes || 'Take as prescribed by your physician.'}
+        </Text>
+
+        {/* Structured Specifications Card (White Rounded Card with Icon Rows) */}
+        <View style={styles.specsCard}>
+          {/* Row 1: How to Use */}
+          <View style={styles.specRow}>
+            <View style={styles.specIconBox}>
+              <Ionicons name="bandage-outline" size={20} color={isDarkMode ? colors.accentTeal : colors.primary} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.stockSectionTitle}>Medicine Stock</Text>
-              <Text
-                style={[
-                  styles.stockCountText,
-                  stockInfo.isLowStock && styles.stockCountTextLow,
-                  stockInfo.isOutOfStock && styles.stockCountTextOut,
-                ]}
-              >
-                {stockInfo.enabled ? stockInfo.statusText : 'Stock tracking not configured'}
+            <View style={styles.specTextCol}>
+              <Text style={styles.specLabel}>How to Use</Text>
+              <Text style={styles.specValue}>Oral ({medicine.frequency})</Text>
+            </View>
+          </View>
+
+          <View style={styles.specDivider} />
+
+          {/* Row 2: Dosage */}
+          <View style={styles.specRow}>
+            <View style={styles.specIconBox}>
+              <Ionicons name="flask-outline" size={20} color={isDarkMode ? colors.accentTeal : colors.primary} />
+            </View>
+            <View style={styles.specTextCol}>
+              <Text style={styles.specLabel}>Dosage</Text>
+              <Text style={styles.specValue}>{medicine.dosage}</Text>
+            </View>
+          </View>
+
+          <View style={styles.specDivider} />
+
+          {/* Row 3: Scheduled Time */}
+          <View style={styles.specRow}>
+            <View style={styles.specIconBox}>
+              <Ionicons name="time-outline" size={20} color={isDarkMode ? colors.accentTeal : colors.primary} />
+            </View>
+            <View style={styles.specTextCol}>
+              <Text style={styles.specLabel}>Time</Text>
+              <Text style={styles.specValue}>{medicine.reminderTime}</Text>
+            </View>
+          </View>
+
+          <View style={styles.specDivider} />
+
+          {/* Row 4: Frequency */}
+          <View style={styles.specRow}>
+            <View style={styles.specIconBox}>
+              <Ionicons name="repeat-outline" size={20} color={isDarkMode ? colors.accentTeal : colors.primary} />
+            </View>
+            <View style={styles.specTextCol}>
+              <Text style={styles.specLabel}>Frequency</Text>
+              <Text style={styles.specValue}>{medicine.frequency}</Text>
+            </View>
+          </View>
+
+          <View style={styles.specDivider} />
+
+          {/* Row 5: Expiry Information */}
+          <View style={styles.specRow}>
+            <View style={styles.specIconBox}>
+              <Ionicons
+                name="calendar-outline"
+                size={20}
+                color={isExpired ? colors.alertRed : isDarkMode ? colors.accentTeal : colors.primary}
+              />
+            </View>
+            <View style={styles.specTextCol}>
+              <Text style={styles.specLabel}>Expiry Date</Text>
+              <Text style={[styles.specValue, isExpired && { color: colors.alertRed }]}>
+                {medicine.expiryDate || 'Not specified'}{' '}
+                {isExpired
+                  ? '(Expired)'
+                  : isExpiringSoon
+                  ? `(${expiry.daysRemaining} days left)`
+                  : ''}
               </Text>
             </View>
           </View>
 
-          {/* Calm Low Stock Warning Banner */}
-          {stockInfo.enabled && stockInfo.isLowStock && (
-            <View style={styles.lowStockWarningBanner}>
-              <Ionicons name="warning-outline" size={22} color={Colors.warningAmber} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.lowStockWarningTitle}>Stock Notice</Text>
-                <Text style={styles.lowStockWarningText}>
-                  {stockInfo.warningText}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Calm Zero Stock Notice Banner */}
-          {stockInfo.enabled && stockInfo.isOutOfStock && (
-            <View style={styles.outOfStockWarningBanner}>
-              <Ionicons name="information-circle-outline" size={22} color={Colors.alertRed} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.outOfStockWarningTitle}>Stock Notice</Text>
-                <Text style={styles.outOfStockWarningText}>
-                  No medicine remaining.
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Stock Metadata / Config summary */}
+          {/* Row 6: Stock Tracking Information */}
           {stockInfo.enabled && (
-            <View style={styles.stockMetaRow}>
-              <Text style={styles.stockMetaItem}>
-                Dose: {stockInfo.quantityPerDose} {stockInfo.unitType}
-              </Text>
-              <Text style={styles.stockMetaDivider}>•</Text>
-              <Text style={styles.stockMetaItem}>
-                Alert at: {stockInfo.lowStockThreshold} {stockInfo.unitType}
-              </Text>
-            </View>
+            <>
+              <View style={styles.specDivider} />
+              <View style={styles.specRow}>
+                <View style={styles.specIconBox}>
+                  <Ionicons
+                    name={stockInfo.isOutOfStock ? 'alert-circle-outline' : 'cube-outline'}
+                    size={20}
+                    color={
+                      stockInfo.isOutOfStock
+                        ? colors.alertRed
+                        : stockInfo.isLowStock
+                        ? colors.warningAmber
+                        : isDarkMode
+                        ? colors.accentTeal
+                        : colors.primary
+                    }
+                  />
+                </View>
+                <View style={styles.specTextCol}>
+                  <Text style={styles.specLabel}>Stock Remaining</Text>
+                  <Text
+                    style={[
+                      styles.specValue,
+                      stockInfo.isOutOfStock && { color: colors.alertRed, fontWeight: '700' },
+                      stockInfo.isLowStock && { color: colors.warningAmber, fontWeight: '700' },
+                    ]}
+                  >
+                    {stockInfo.currentQuantity} {stockInfo.unitType}{' '}
+                    {stockInfo.isOutOfStock
+                      ? '(Out of Stock!)'
+                      : stockInfo.isLowStock
+                      ? '(Low Supply!)'
+                      : ''}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.updateStockLink} onPress={handleOpenUpdateModal}>
+                  <Text style={styles.updateStockLinkText}>Update</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Keep Out of Reach of Children Warning Notice */}
+        <View style={styles.warningNotice}>
+          <Ionicons name="warning-outline" size={18} color={colors.warningAmber} />
+          <Text style={styles.warningNoticeText}>Keep out of reach of children.</Text>
+        </View>
+
+        {/* Bottom Dual Action Buttons (Reference Style) */}
+        <View style={styles.actionButtonsRow}>
+          {/* Action 1: Expired Warning / Safety Status */}
+          {isExpired ? (
+            <TouchableOpacity
+              style={styles.actionBtnExpired}
+              onPress={() => speakExpiryWarning(medicine.name, settings?.voiceLanguage || 'en-US')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="alert-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.actionBtnExpiredText}>Expired Medication Warning</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.actionBtnSafe}
+              onPress={() => Alert.alert('Clinical Safety Notice', 'This medication is safely within its verified shelf-life date.')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="shield-checkmark" size={20} color="#FFFFFF" />
+              <Text style={styles.actionBtnSafeText}>Verified Safe</Text>
+            </TouchableOpacity>
           )}
 
-          {/* Update Stock Button */}
+          {/* Action 2: Audio Medication Guide */}
           <TouchableOpacity
-            style={styles.updateStockButton}
-            activeOpacity={0.8}
-            onPress={handleOpenUpdateModal}
+            style={[styles.actionBtnAudio, isSpeaking && styles.actionBtnAudioActive]}
+            onPress={handlePlayVoiceGuide}
+            activeOpacity={0.85}
           >
-            <Ionicons name="create-outline" size={20} color="#FFF" />
-            <Text style={styles.updateStockButtonText}>Update Stock</Text>
+            <Ionicons name={isSpeaking ? 'stop-circle' : 'volume-high'} size={20} color="#FFFFFF" />
+            <Text style={styles.actionBtnAudioText}>
+              {isSpeaking ? 'Stop Guide' : 'Listen Guide'}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Edit Button */}
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => navigation.navigate('EditMedicine', { medicineId: medicine.id })}
-        >
-          <Ionicons name="create-outline" size={20} color="#FFF" />
-          <Text style={styles.actionButtonText}>Edit Medicine Information</Text>
-        </TouchableOpacity>
-
-        {/* Delete Button */}
-        <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={handleDelete}
-        >
-          <Ionicons name="trash-outline" size={20} color={Colors.alertRed} />
-          <Text style={styles.deleteButtonText}>Delete Medicine</Text>
+        {/* Delete Medicine (Safely Protected behind Confirmation Alert) */}
+        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} activeOpacity={0.8}>
+          <Ionicons name="trash-outline" size={18} color={colors.alertRed} />
+          <Text style={styles.deleteButtonText}>Remove Medicine</Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Update Stock Modal */}
-      <Modal
-        visible={isUpdateModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsUpdateModalVisible(false)}
-      >
+      {/* Stock Update Modal */}
+      <Modal visible={isUpdateModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="cube" size={24} color={Colors.primary} />
-                <Text style={styles.modalTitle}>Update Medicine Stock</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setIsUpdateModalVisible(false)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Ionicons name="close" size={26} color={Colors.textPrimary} />
-              </TouchableOpacity>
+            <Text style={styles.modalTitle}>Update Medication Stock</Text>
+            <Text style={styles.modalSubtitle}>
+              Adjust your remaining pills or tap quick-add for refills.
+            </Text>
+
+            <View style={styles.quickAddRow}>
+              {[5, 10, 30].map((amt) => (
+                <TouchableOpacity
+                  key={amt}
+                  style={styles.quickAddChip}
+                  onPress={() => handleQuickAdd(amt)}
+                >
+                  <Text style={styles.quickAddChipText}>+{amt}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
-              {/* Current Quantity Field with Stepper */}
-              <Text style={styles.modalFieldLabel}>Current Quantity Remaining</Text>
-              <View style={styles.modalStepperRow}>
+            <Text style={styles.modalFieldLabel}>Unit Type</Text>
+            <View style={styles.unitChipRow}>
+              {UNIT_OPTIONS.map((u) => (
                 <TouchableOpacity
-                  style={styles.modalStepBtn}
-                  onPress={() => handleModalAdjust(-1)}
+                  key={u}
+                  style={[styles.unitChip, editUnitType.toLowerCase() === u && styles.unitChipActive]}
+                  onPress={() => setEditUnitType(u)}
                 >
-                  <Ionicons name="remove" size={26} color={Colors.primary} />
+                  <Text style={[styles.unitChipText, editUnitType.toLowerCase() === u && styles.unitChipTextActive]}>
+                    {u}
+                  </Text>
                 </TouchableOpacity>
+              ))}
+            </View>
 
+            <Text style={styles.modalFieldLabel}>Current Quantity Remaining</Text>
+            <TextInput
+              style={styles.modalInput}
+              keyboardType="numeric"
+              value={editQuantityStr}
+              onChangeText={setEditQuantityStr}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalFieldLabel}>Dose Qty</Text>
                 <TextInput
-                  style={styles.modalQtyInput}
-                  value={editQuantityStr}
-                  onChangeText={setEditQuantityStr}
+                  style={[styles.modalInput, { marginBottom: 0 }]}
                   keyboardType="numeric"
-                  textAlign="center"
+                  value={editQtyPerDoseStr}
+                  onChangeText={setEditQtyPerDoseStr}
                 />
-
-                <TouchableOpacity
-                  style={styles.modalStepBtn}
-                  onPress={() => handleModalAdjust(1)}
-                >
-                  <Ionicons name="add" size={26} color={Colors.primary} />
-                </TouchableOpacity>
               </View>
-
-              {/* Quick Add Chips */}
-              <View style={styles.quickAddRow}>
-                {[5, 10, 30].map((num) => (
-                  <TouchableOpacity
-                    key={num}
-                    style={styles.quickAddChip}
-                    onPress={() => handleModalAdjust(num)}
-                  >
-                    <Ionicons name="add" size={16} color={Colors.primary} />
-                    <Text style={styles.quickAddChipText}>{num} {editUnitType}</Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalFieldLabel}>Low Alert At</Text>
+                <TextInput
+                  style={[styles.modalInput, { marginBottom: 0 }]}
+                  keyboardType="numeric"
+                  value={editThresholdStr}
+                  onChangeText={setEditThresholdStr}
+                />
               </View>
+            </View>
 
-              {/* Unit Type Selection */}
-              <Text style={styles.modalFieldLabel}>Unit Type</Text>
-              <View style={styles.unitChipContainer}>
-                {['tablets', 'capsules', 'doses', 'pills'].map((u) => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[
-                      styles.unitChip,
-                      editUnitType.toLowerCase() === u && styles.unitChipActive,
-                    ]}
-                    onPress={() => setEditUnitType(u)}
-                  >
-                    <Text
-                      style={[
-                        styles.unitChipText,
-                        editUnitType.toLowerCase() === u && styles.unitChipTextActive,
-                      ]}
-                    >
-                      {u.charAt(0).toUpperCase() + u.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Quantity Per Dose */}
-              <Text style={styles.modalFieldLabel}>Quantity Used Per Dose</Text>
-              <TextInput
-                style={styles.modalSimpleInput}
-                value={editQtyPerDoseStr}
-                onChangeText={setEditQtyPerDoseStr}
-                keyboardType="numeric"
-                placeholder="1"
-                placeholderTextColor={Colors.textMuted}
-              />
-
-              {/* Low Stock Warning Threshold */}
-              <Text style={styles.modalFieldLabel}>Low Stock Warning Threshold</Text>
-              <TextInput
-                style={styles.modalSimpleInput}
-                value={editThresholdStr}
-                onChangeText={setEditThresholdStr}
-                keyboardType="numeric"
-                placeholder="3"
-                placeholderTextColor={Colors.textMuted}
-              />
-
-              {/* Modal Buttons */}
-              <View style={styles.modalActionRow}>
-                <TouchableOpacity
-                  style={styles.modalCancelBtn}
-                  onPress={() => setIsUpdateModalVisible(false)}
-                >
-                  <Text style={styles.modalCancelBtnText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.modalSaveBtn}
-                  onPress={handleSaveStock}
-                >
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#FFF" />
-                  <Text style={styles.modalSaveBtnText}>Save Stock</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setIsUpdateModalVisible(false)}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveStockUpdate}>
+                <Text style={styles.modalSaveBtnText}>Save Stock</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -463,498 +472,373 @@ export default function MedicineDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 54,
-    paddingBottom: 16,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  editButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 60,
-  },
-  expiredCard: {
-    backgroundColor: Colors.alertRedContainer,
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: Colors.alertRed,
-  },
-  expiredRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  expiredTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.onAlertRedContainer,
-  },
-  expiredText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.onAlertRedContainer,
-    marginTop: 2,
-  },
-  expiredSubText: {
-    fontSize: 14,
-    color: Colors.onAlertRedContainer,
-    marginTop: 8,
-  },
-  warningCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: Colors.warningAmberContainer,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 18,
-  },
-  warningTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.warningAmber,
-  },
-  warningText: {
-    fontSize: 14,
-    color: Colors.textPrimary,
-    marginTop: 2,
-  },
-  detailsCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 18,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-  },
-  medName: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  medDosage: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: Colors.primary,
-    marginTop: 6,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: 16,
-  },
-  detailRow: {
-    marginBottom: 14,
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    fontWeight: '500',
-  },
-  detailValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginTop: 3,
-  },
-  stockCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 18,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-  },
-  stockHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  stockIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: Colors.secondaryContainer,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stockSectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  stockCountText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.primary,
-    marginTop: 4,
-  },
-  stockCountTextLow: {
-    color: Colors.warningAmber,
-  },
-  stockCountTextOut: {
-    color: Colors.alertRed,
-  },
-  lowStockWarningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.warningAmberContainer,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 14,
-  },
-  lowStockWarningTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: Colors.warningAmber,
-  },
-  lowStockWarningText: {
-    fontSize: 14,
-    color: Colors.textPrimary,
-    marginTop: 2,
-  },
-  outOfStockWarningBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.alertRedContainer,
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 14,
-  },
-  outOfStockWarningTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: Colors.alertRed,
-  },
-  outOfStockWarningText: {
-    fontSize: 14,
-    color: Colors.onAlertRedContainer,
-    marginTop: 2,
-  },
-  stockMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  stockMetaItem: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    fontWeight: '500',
-  },
-  stockMetaDivider: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginHorizontal: 8,
-  },
-  updateStockButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    height: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 16,
-  },
-  updateStockButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 22,
-    maxHeight: '90%',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  modalScroll: {
-    paddingBottom: 10,
-  },
-  modalFieldLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginTop: 14,
-    marginBottom: 8,
-  },
-  modalStepperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    marginVertical: 6,
-  },
-  modalStepBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: Colors.secondaryContainer,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalQtyInput: {
-    width: 100,
-    height: 54,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    backgroundColor: Colors.background,
-  },
-  quickAddRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 10,
-  },
-  quickAddChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.secondaryContainer,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  quickAddChipText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  unitChipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 4,
-  },
-  unitChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: Colors.background,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  unitChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  unitChipText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  unitChipTextActive: {
-    color: '#FFF',
-  },
-  modalSimpleInput: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    paddingHorizontal: 14,
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    backgroundColor: Colors.background,
-  },
-  modalActionRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    marginTop: 22,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  modalCancelBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCancelBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  modalSaveBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  modalSaveBtnText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  supplyControlRow: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-  },
-  supplyButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.secondaryContainer,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  supplyButtonRefill: {
-    backgroundColor: Colors.primary,
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    width: 'auto',
-  },
-  refillText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 15,
-  },
-  actionButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    height: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  actionButtonText: {
-    color: '#FFF',
-    fontSize: 17,
-    fontWeight: 'bold',
-  },
-  deleteButton: {
-    backgroundColor: '#FFF',
-    borderWidth: 1.5,
-    borderColor: Colors.alertRed,
-  },
-  deleteButtonText: {
-    color: Colors.alertRed,
-    fontSize: 17,
-    fontWeight: 'bold',
-  },
-  voiceGuideCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  voiceGuideCardActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.secondaryContainer,
-  },
-  voiceGuideIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  voiceGuideIconActive: {
-    backgroundColor: Colors.accentTeal,
-  },
-  voiceGuideTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  voiceGuideSubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-});
+function createStyles(colors: any, isDarkMode: boolean) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+    },
+    loadingText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+    },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 18,
+      paddingTop: 50,
+      paddingBottom: 14,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    backButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    topBarTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    editButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    scrollContent: {
+      padding: 18,
+      paddingBottom: 40,
+    },
+    photoContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 14,
+    },
+    medicinePhoto: {
+      width: 170,
+      height: 140,
+      borderRadius: 16,
+    },
+    photoFallback: {
+      width: 140,
+      height: 120,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    nameHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    medicineName: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      flex: 1,
+      marginRight: 10,
+    },
+    statusBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    statusBadgeActive: {
+      backgroundColor: colors.badgeUpcomingBg,
+    },
+    statusBadgeWarning: {
+      backgroundColor: colors.warningAmberContainer,
+    },
+    statusBadgeExpired: {
+      backgroundColor: colors.alertRedContainer,
+    },
+    statusBadgeText: {
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+    },
+    statusTextActive: {
+      color: colors.badgeUpcomingText,
+    },
+    statusTextWarning: {
+      color: colors.warningAmber,
+    },
+    statusTextExpired: {
+      color: colors.alertRed,
+    },
+    instructionsText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      lineHeight: 20,
+      marginBottom: 18,
+    },
+    specsCard: {
+      backgroundColor: colors.cardBackground,
+      borderRadius: 18,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: colors.cardShadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDarkMode ? 0.25 : 0.05,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    specRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+    },
+    specIconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: isDarkMode ? colors.surfaceWarm : '#EDF6F7',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    specTextCol: {
+      flex: 1,
+    },
+    specLabel: {
+      fontSize: 12,
+      color: colors.textMuted,
+      marginBottom: 2,
+    },
+    specValue: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    specDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: 4,
+    },
+    updateStockLink: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: isDarkMode ? colors.surfaceWarm : '#E0F2F1',
+    },
+    updateStockLinkText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: isDarkMode ? colors.accentTeal : colors.primary,
+    },
+    warningNotice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDarkMode ? colors.surfaceCard : colors.surfaceWarm,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginBottom: 18,
+      gap: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    warningNoticeText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    actionButtonsRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 20,
+    },
+    actionBtnExpired: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.alertRed,
+      paddingVertical: 14,
+      borderRadius: 12,
+      gap: 6,
+    },
+    actionBtnExpiredText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    actionBtnSafe: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.takenGreen,
+      paddingVertical: 14,
+      borderRadius: 12,
+      gap: 6,
+    },
+    actionBtnSafeText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    actionBtnAudio: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.snoozeOrange,
+      paddingVertical: 14,
+      borderRadius: 12,
+      gap: 6,
+    },
+    actionBtnAudioActive: {
+      backgroundColor: colors.alertRed,
+    },
+    actionBtnAudioText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    deleteButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      borderRadius: 10,
+      gap: 6,
+      marginTop: 8,
+    },
+    deleteButtonText: {
+      color: colors.alertRed,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    modalCard: {
+      backgroundColor: colors.cardBackground,
+      borderRadius: 20,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    modalSubtitle: {
+      fontSize: 13,
+      color: colors.textMuted,
+      marginBottom: 16,
+    },
+    quickAddRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 16,
+    },
+    quickAddChip: {
+      flex: 1,
+      backgroundColor: isDarkMode ? colors.surfaceWarm : '#E0F2F1',
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    quickAddChipText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: isDarkMode ? colors.accentTeal : colors.primary,
+    },
+    unitChipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 12,
+    },
+    unitChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: isDarkMode ? colors.surfaceCard : colors.surfaceWarm,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    unitChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    unitChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    unitChipTextActive: {
+      color: '#FFFFFF',
+    },
+    modalFieldLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginBottom: 6,
+    },
+    modalInput: {
+      backgroundColor: colors.inputBackground,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 16,
+      color: colors.textPrimary,
+      marginBottom: 20,
+    },
+    modalBtnRow: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    modalCancelBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 10,
+      alignItems: 'center',
+      backgroundColor: isDarkMode ? colors.surfaceWarm : '#F0F4F4',
+    },
+    modalCancelBtnText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    modalSaveBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 10,
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+    },
+    modalSaveBtnText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+  });
+}

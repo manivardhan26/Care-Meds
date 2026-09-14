@@ -1,4 +1,4 @@
-export type AdherenceStatus = 'TAKEN' | 'SKIPPED' | 'MISSED' | 'PENDING';
+export type AdherenceStatus = 'UPCOMING' | 'TAKEN' | 'MISSED' | 'SKIPPED' | 'SNOOZED';
 
 export type TimeOfDay = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
@@ -12,6 +12,7 @@ export interface Medicine {
   frequency: string;
   reminderTime: string; // e.g. "08:00 AM"
   timeOfDay: TimeOfDay;
+  imageUri?: string | null;
   supplyCount: number;
   createdAt: number;
   stockTrackingEnabled?: boolean;
@@ -33,7 +34,11 @@ export interface AdherenceLog {
   notes?: string;
 }
 
-export type VoiceLanguage = 'en-US' | 'te-IN';
+export type VoiceLanguage = 'en-US' | 'te-IN' | 'hi-IN';
+
+export type SpeechSpeedPreset = 'slow' | 'normal' | 'fast';
+export type VoiceProviderType = 'device' | 'cloud';
+export type VoiceGenderPreference = 'female' | 'male';
 
 export interface AppSettings {
   voiceRemindersEnabled: boolean;
@@ -41,4 +46,12 @@ export interface AppSettings {
   snoozeMinutes: number;
   isDarkMode: boolean;
   voiceLanguage?: VoiceLanguage;
+  selectedVoiceIdentifier?: string;
+  voiceGender?: VoiceGenderPreference;
+  speechSpeed?: SpeechSpeedPreset;
+  speechPitch?: number;
+  voiceProvider?: VoiceProviderType;
+  preferredVoiceByLanguage?: Partial<Record<VoiceLanguage, string>>;
+  patientName?: string;
+  patientAge?: string;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,20 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  Image,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../theme/colors';
+import * as ImagePicker from 'expo-image-picker';
+import { useTheme } from '../theme/ThemeContext';
 import { getMedicines, saveMedicine } from '../storage/medicineStorage';
 import { getMedicineStockInfo } from '../utils/stockUtils';
+import { getLocalTodayIso } from '../utils/dateUtils';
+import { evaluateExpiry } from '../utils/expirySafety';
 
-const FREQUENCIES = ['Once daily', 'Twice daily', 'Three times daily', 'As needed', 'Weekly'];
-
+const ROUTES = ['Oral', 'Topical', 'Inhalation', 'Drops', 'Injection'];
+const FREQUENCIES = ['Once a day', 'Twice a day', 'Three times a day', 'As needed', 'Weekly'];
+const UNIT_OPTIONS = ['tablets', 'capsules', 'ml', 'drops', 'puffs', 'units'];
 const TIME_PRESETS = [
   { label: 'Morning', time: '08:00 AM' },
   { label: 'Noon', time: '12:00 PM' },
@@ -30,15 +35,20 @@ export default function AddEditMedicineScreen() {
   const existingMedicineId = route.params?.medicineId;
   const initialValues = route.params?.prefill;
 
+  const { colors, isDarkMode } = useTheme();
+
   const [name, setName] = useState(initialValues?.name || '');
   const [dosage, setDosage] = useState(initialValues?.dosage || '');
-  const [frequency, setFrequency] = useState('Once daily');
+  const [howToUse, setHowToUse] = useState('Oral');
+  const [frequency, setFrequency] = useState('Once a day');
   const [reminderTime, setReminderTime] = useState('08:00 AM');
   const [timeOfDay, setTimeOfDay] = useState('Morning');
-  const [expiryDate, setExpiryDate] = useState(initialValues?.expiryDate || '');
+  const [startDate, setStartDate] = useState(getLocalTodayIso());
+  const [expiryDate, setExpiryDate] = useState(initialValues?.expiryDate || '2027-12-31');
   const [instructions, setInstructions] = useState(initialValues?.instructions || '');
+  const [imageUri, setImageUri] = useState<string | null>(initialValues?.imageUri || null);
 
-  // Stock tracking state (Optional)
+  // Stock tracking state
   const [stockTrackingEnabled, setStockTrackingEnabled] = useState(
     initialValues?.stockTrackingEnabled !== undefined ? Boolean(initialValues.stockTrackingEnabled) : true
   );
@@ -66,6 +76,7 @@ export default function AddEditMedicineScreen() {
           setTimeOfDay(found.timeOfDay);
           setExpiryDate(found.expiryDate);
           setInstructions(found.instructions || found.notes);
+          setImageUri(found.imageUri || null);
           const stock = getMedicineStockInfo(found);
           setStockTrackingEnabled(stock.enabled);
           setCurrentQuantityStr(stock.currentQuantity.toString());
@@ -77,12 +88,69 @@ export default function AddEditMedicineScreen() {
     }
   }, [existingMedicineId]);
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert('Missing Field', 'Please enter a medicine name.');
-      return;
+  const handleRemovePhoto = () => {
+    setImageUri(null);
+  };
+
+  const handlePickPhoto = () => {
+    const options: any[] = [
+      {
+        text: 'Take Photo with Camera',
+        onPress: async () => {
+          try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission Denied', 'Camera permission is required to take a medicine photo.');
+              return;
+            }
+            const res = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [4, 3],
+              quality: 0.8,
+            });
+            if (!res.canceled && res.assets && res.assets.length > 0) {
+              setImageUri(res.assets[0].uri);
+            }
+          } catch (e) {
+            console.warn('Camera error:', e);
+          }
+        },
+      },
+      {
+        text: 'Choose from Gallery',
+        onPress: async () => {
+          try {
+            const res = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [4, 3],
+              quality: 0.8,
+            });
+            if (!res.canceled && res.assets && res.assets.length > 0) {
+              setImageUri(res.assets[0].uri);
+            }
+          } catch (e) {
+            console.warn('Gallery picker error:', e);
+          }
+        },
+      },
+    ];
+
+    if (imageUri) {
+      options.push({
+        text: 'Remove Photo',
+        style: 'destructive',
+        onPress: handleRemovePhoto,
+      });
     }
 
+    options.push({ text: 'Cancel', style: 'cancel' });
+
+    Alert.alert('Medicine Photo', 'Choose how to add a photo of this medicine:', options);
+  };
+
+  const performSave = async () => {
     const parsedQty = parseInt(currentQuantityStr, 10);
     const quantity = isNaN(parsedQty) ? 0 : Math.max(0, parsedQty);
     const parsedThreshold = parseInt(lowStockThresholdStr, 10);
@@ -100,6 +168,7 @@ export default function AddEditMedicineScreen() {
         expiryDate: expiryDate.trim() || '2027-12-31',
         instructions: instructions.trim(),
         notes: instructions.trim(),
+        imageUri: imageUri || null,
         supplyCount: quantity,
         stockTrackingEnabled,
         currentQuantity: quantity,
@@ -113,143 +182,264 @@ export default function AddEditMedicineScreen() {
     navigation.goBack();
   };
 
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Missing Field', 'Please enter a medicine name.');
+      return;
+    }
+
+    if (expiryDate && expiryDate.trim()) {
+      const expiryEval = evaluateExpiry(expiryDate.trim());
+      if (expiryEval.state === 'EXPIRED') {
+        Alert.alert(
+          'Medicine Expired',
+          'The specified expiry date is in the past. Do you still want to save this medicine?',
+          [
+            { text: 'Edit Date', style: 'cancel' },
+            { text: 'Save Anyway', onPress: () => performSave() },
+          ]
+        );
+        return;
+      }
+    }
+
+    await performSave();
+  };
+
+  const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
+
   return (
     <View style={styles.container}>
-      {/* Top Header Bar */}
-      <View style={styles.headerBar}>
+      {/* Top App Bar */}
+      <View style={styles.topBar}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="arrow-back" size={26} color={Colors.textPrimary} />
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
+        <Text style={styles.topBarTitle}>
           {existingMedicineId ? 'Edit Medicine' : 'Add Medicine'}
         </Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Shortcut to Scan Medicine Box */}
-        {!existingMedicineId && (
-          <TouchableOpacity
-            style={styles.scanShortcutButton}
-            onPress={() => navigation.navigate('Scan')}
-          >
-            <Ionicons name="camera-outline" size={24} color={Colors.primary} />
-            <Text style={styles.scanShortcutText}>Scan Medicine Box with Camera</Text>
-          </TouchableOpacity>
-        )}
+        {/* Add Photo Box (Reference Style) */}
+        <TouchableOpacity style={styles.addPhotoBox} onPress={handlePickPhoto} activeOpacity={0.8}>
+          {imageUri ? (
+            <View style={styles.photoPreviewWrapper}>
+              <Image source={{ uri: imageUri }} style={styles.photoPreview} resizeMode="cover" />
+              <View style={styles.changePhotoBadge}>
+                <Ionicons name="camera" size={16} color="#FFFFFF" />
+                <Text style={styles.changePhotoText}>Change</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <View style={styles.cameraIconCircle}>
+                <Ionicons name="camera-outline" size={28} color={isDarkMode ? colors.accentTeal : colors.primary} />
+              </View>
+              <Text style={styles.addPhotoText}>Add Photo</Text>
+            </View>
+          )}
+        </TouchableOpacity>
 
-        {/* Medicine Name */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Medicine Name *</Text>
+        {/* Medicine Name Field */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Medicine Name</Text>
           <TextInput
-            style={[styles.input, styles.inputBold]}
-            placeholder="e.g. Aspirin, Lisinopril"
-            placeholderTextColor={Colors.textMuted}
+            style={styles.input}
+            placeholder="e.g. Cold Relief Pellets"
+            placeholderTextColor={colors.textMuted}
             value={name}
             onChangeText={setName}
           />
         </View>
 
+        {/* How to Use / Route */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>How to Use / Route</Text>
+          <View style={styles.chipRow}>
+            {ROUTES.map((routeItem) => (
+              <TouchableOpacity
+                key={routeItem}
+                style={[styles.smallChip, howToUse === routeItem && styles.smallChipActive]}
+                onPress={() => setHowToUse(routeItem)}
+              >
+                <Text style={[styles.smallChipText, howToUse === routeItem && styles.smallChipTextActive]}>
+                  {routeItem}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Dosage */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Dosage / Strength *</Text>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Dosage</Text>
           <TextInput
             style={styles.input}
-            placeholder="e.g. 500mg, 1 tablet"
-            placeholderTextColor={Colors.textMuted}
+            placeholder="e.g. 1 tablet, 500mg, 5ml"
+            placeholderTextColor={colors.textMuted}
             value={dosage}
             onChangeText={setDosage}
           />
         </View>
 
-        {/* Reminder Time Presets */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Scheduled Reminder Time</Text>
-          <View style={styles.presetRow}>
+        {/* Frequency */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Frequency</Text>
+          <View style={styles.chipRow}>
+            {FREQUENCIES.map((f) => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.smallChip, frequency === f && styles.smallChipActive]}
+                onPress={() => setFrequency(f)}
+              >
+                <Text style={[styles.smallChipText, frequency === f && styles.smallChipTextActive]}>
+                  {f}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Reminder Time */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Reminder Time</Text>
+          <View style={styles.timePresetsRow}>
             {TIME_PRESETS.map((preset) => (
               <TouchableOpacity
-                key={preset.label}
-                style={[
-                  styles.presetChip,
-                  reminderTime === preset.time && styles.presetChipActive,
-                ]}
+                key={preset.time}
+                style={[styles.timeChip, reminderTime === preset.time && styles.smallChipActive]}
                 onPress={() => {
                   setReminderTime(preset.time);
                   setTimeOfDay(preset.label);
                 }}
               >
-                <Text
-                  style={[
-                    styles.presetChipText,
-                    reminderTime === preset.time && styles.presetChipTextActive,
-                  ]}
-                >
-                  {preset.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.presetChipSubText,
-                    reminderTime === preset.time && styles.presetChipTextActive,
-                  ]}
-                >
-                  {preset.time}
+                <Ionicons name="time-outline" size={14} color={reminderTime === preset.time ? '#FFFFFF' : colors.textSecondary} />
+                <Text style={[styles.timeChipText, reminderTime === preset.time && styles.smallChipTextActive]}>
+                  {preset.label} ({preset.time})
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-        </View>
-
-        {/* Custom Time */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Custom Time (hh:mm AM/PM)</Text>
           <TextInput
-            style={styles.input}
-            placeholder="08:00 AM"
-            placeholderTextColor={Colors.textMuted}
+            style={[styles.input, { marginTop: 8 }]}
+            placeholder="Custom Time (e.g. 08:30 AM)"
+            placeholderTextColor={colors.textMuted}
             value={reminderTime}
             onChangeText={setReminderTime}
           />
         </View>
 
-        {/* Frequency */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>How often do you take this?</Text>
-          <View style={styles.freqRow}>
-            {FREQUENCIES.map((freq) => (
-              <TouchableOpacity
-                key={freq}
-                style={[styles.freqChip, frequency === freq && styles.freqChipActive]}
-                onPress={() => setFrequency(freq)}
-              >
-                <Text style={[styles.freqChipText, frequency === freq && styles.freqChipTextActive]}>
-                  {freq}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {/* Dates Row: Start Date + Expiry Date */}
+        <View style={styles.twoColRow}>
+          <View style={styles.colHalf}>
+            <Text style={styles.fieldLabel}>Start Date</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textMuted}
+              value={startDate}
+              onChangeText={setStartDate}
+            />
+          </View>
+
+          <View style={styles.colHalf}>
+            <Text style={styles.fieldLabel}>Expiry Date</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textMuted}
+              value={expiryDate}
+              onChangeText={setExpiryDate}
+            />
           </View>
         </View>
 
-        {/* Expiry Date */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Medicine Expiry Date (YYYY-MM-DD or MM/YYYY)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. 2027-12-31"
-            placeholderTextColor={Colors.textMuted}
-            value={expiryDate}
-            onChangeText={setExpiryDate}
-          />
+        {/* Stock Management Card */}
+        <View style={styles.stockCard}>
+          <View style={styles.stockCardHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.stockCardTitle}>Pill Stock Tracking</Text>
+              <Text style={styles.stockCardSubtitle}>Automatically deduct doses upon intake</Text>
+            </View>
+            <Switch
+              value={stockTrackingEnabled}
+              onValueChange={setStockTrackingEnabled}
+              trackColor={{ false: colors.border, true: colors.primaryContainer }}
+              thumbColor={stockTrackingEnabled ? colors.primary : '#FFF'}
+            />
+          </View>
+
+          {stockTrackingEnabled && (
+            <View style={{ marginTop: 8 }}>
+              <Text style={styles.fieldLabel}>Unit Type</Text>
+              <View style={styles.chipRow}>
+                {UNIT_OPTIONS.map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.smallChip, unitType.toLowerCase() === u && styles.smallChipActive]}
+                    onPress={() => setUnitType(u)}
+                  >
+                    <Text style={[styles.smallChipText, unitType.toLowerCase() === u && styles.smallChipTextActive]}>
+                      {u}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={[styles.twoColRow, { marginTop: 10 }]}>
+                <View style={styles.colHalf}>
+                  <Text style={styles.fieldLabel}>Current Stock</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    placeholder="e.g. 30"
+                    placeholderTextColor={colors.textMuted}
+                    value={currentQuantityStr}
+                    onChangeText={setCurrentQuantityStr}
+                  />
+                </View>
+
+                <View style={styles.colHalf}>
+                  <Text style={styles.fieldLabel}>Dose Qty (Per Intake)</Text>
+                  <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    placeholder="e.g. 1"
+                    placeholderTextColor={colors.textMuted}
+                    value={quantityPerDoseStr}
+                    onChangeText={setQuantityPerDoseStr}
+                  />
+                </View>
+              </View>
+
+              <View style={{ marginTop: 8 }}>
+                <Text style={styles.fieldLabel}>Low Stock Alert Threshold</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  placeholder="e.g. 3"
+                  placeholderTextColor={colors.textMuted}
+                  value={lowStockThresholdStr}
+                  onChangeText={setLowStockThresholdStr}
+                />
+              </View>
+            </View>
+          )}
         </View>
 
-        {/* Notes / Instructions */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Special Notes / Instructions</Text>
+        {/* Instructions / Notes Field */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Instructions / Notes</Text>
           <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="e.g. Take with plenty of water after meals"
-            placeholderTextColor={Colors.textMuted}
+            style={[styles.input, styles.multilineInput]}
+            placeholder="e.g. Take with warm water after meals"
+            placeholderTextColor={colors.textMuted}
             value={instructions}
             onChangeText={setInstructions}
             multiline
@@ -257,399 +447,263 @@ export default function AddEditMedicineScreen() {
           />
         </View>
 
-        {/* Medicine Stock (Optional) */}
-        <View style={styles.stockCard}>
-          <View style={styles.stockCardHeader}>
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Ionicons name="cube-outline" size={24} color={Colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.stockCardTitle}>Medicine Stock (Optional)</Text>
-                <Text style={styles.stockCardSubtitle}>
-                  Track remaining supply and get low stock warnings
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={stockTrackingEnabled}
-              onValueChange={setStockTrackingEnabled}
-              trackColor={{ false: Colors.border, true: Colors.primaryContainer }}
-              thumbColor={stockTrackingEnabled ? Colors.primary : '#FFF'}
-            />
-          </View>
-
-          {stockTrackingEnabled && (
-            <View style={styles.stockFields}>
-              {/* Current Quantity */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Current Quantity Remaining</Text>
-                <View style={styles.stepperRow}>
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() => {
-                      const cur = parseInt(currentQuantityStr, 10) || 0;
-                      setCurrentQuantityStr(Math.max(0, cur - 1).toString());
-                    }}
-                  >
-                    <Ionicons name="remove" size={24} color={Colors.primary} />
-                  </TouchableOpacity>
-
-                  <TextInput
-                    style={styles.stepperInput}
-                    value={currentQuantityStr}
-                    onChangeText={setCurrentQuantityStr}
-                    keyboardType="numeric"
-                    textAlign="center"
-                    placeholder="30"
-                    placeholderTextColor={Colors.textMuted}
-                  />
-
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() => {
-                      const cur = parseInt(currentQuantityStr, 10) || 0;
-                      setCurrentQuantityStr((cur + 1).toString());
-                    }}
-                  >
-                    <Ionicons name="add" size={24} color={Colors.primary} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Quick Add Buttons */}
-                <View style={styles.quickAddRow}>
-                  {[10, 30, 60].map((num) => (
-                    <TouchableOpacity
-                      key={num}
-                      style={styles.quickAddChip}
-                      onPress={() => {
-                        const cur = parseInt(currentQuantityStr, 10) || 0;
-                        setCurrentQuantityStr((cur + num).toString());
-                      }}
-                    >
-                      <Ionicons name="add" size={16} color={Colors.primary} />
-                      <Text style={styles.quickAddChipText}>+{num} {unitType}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Unit Type Selection */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Unit Type</Text>
-                <View style={styles.unitChipContainer}>
-                  {['tablets', 'capsules', 'doses', 'pills'].map((u) => (
-                    <TouchableOpacity
-                      key={u}
-                      style={[
-                        styles.unitChip,
-                        unitType.toLowerCase() === u && styles.unitChipActive,
-                      ]}
-                      onPress={() => setUnitType(u)}
-                    >
-                      <Text
-                        style={[
-                          styles.unitChipText,
-                          unitType.toLowerCase() === u && styles.unitChipTextActive,
-                        ]}
-                      >
-                        {u.charAt(0).toUpperCase() + u.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Quantity Per Dose */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Quantity Used Per Dose</Text>
-                <TextInput
-                  style={styles.input}
-                  value={quantityPerDoseStr}
-                  onChangeText={setQuantityPerDoseStr}
-                  keyboardType="numeric"
-                  placeholder="1"
-                  placeholderTextColor={Colors.textMuted}
-                />
-              </View>
-
-              {/* Low Stock Warning Threshold */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Low Stock Warning At (Threshold)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={lowStockThresholdStr}
-                  onChangeText={setLowStockThresholdStr}
-                  keyboardType="numeric"
-                  placeholder="3"
-                  placeholderTextColor={Colors.textMuted}
-                />
-                <Text style={styles.hintText}>
-                  A calm notice will appear when remaining quantity reaches this number.
-                </Text>
-              </View>
-            </View>
-          )}
+        {/* Keep Out of Reach of Children Warning Notice */}
+        <View style={styles.warningNotice}>
+          <Ionicons name="warning-outline" size={18} color={colors.warningAmber} />
+          <Text style={styles.warningNoticeText}>Keep out of reach of children.</Text>
         </View>
 
-        {/* Save Button */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Ionicons name="save-outline" size={24} color="#FFF" />
-          <Text style={styles.saveButtonText}>
-            {existingMedicineId ? 'Update Medicine' : 'Save Medicine Reminder'}
-          </Text>
+        {/* Big Save Button (Reference Style) */}
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.88}>
+          <Text style={styles.saveButtonText}>Save Medicine</Text>
+        </TouchableOpacity>
+
+        {/* Cancel Button */}
+        <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 54,
-    paddingBottom: 16,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 60,
-  },
-  scanShortcutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: Colors.secondaryContainer,
-    borderRadius: 16,
-    height: 54,
-    marginBottom: 20,
-  },
-  scanShortcutText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.primary,
-  },
-  inputGroup: {
-    marginBottom: 18,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    height: 56,
-    paddingHorizontal: 16,
-    fontSize: 18,
-    color: Colors.textPrimary,
-  },
-  inputBold: {
-    fontWeight: 'bold',
-    fontSize: 20,
-  },
-  textArea: {
-    height: 90,
-    paddingTop: 14,
-    textAlignVertical: 'top',
-  },
-  presetRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  presetChip: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  presetChipActive: {
-    backgroundColor: Colors.primaryContainer,
-    borderColor: Colors.primary,
-  },
-  presetChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  presetChipSubText: {
-    fontSize: 11,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  presetChipTextActive: {
-    color: Colors.onPrimaryContainer,
-    fontWeight: 'bold',
-  },
-  freqRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  freqChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  freqChipActive: {
-    backgroundColor: Colors.primaryContainer,
-    borderColor: Colors.primary,
-  },
-  freqChipText: {
-    fontSize: 14,
-    color: Colors.textPrimary,
-  },
-  freqChipTextActive: {
-    color: Colors.onPrimaryContainer,
-    fontWeight: 'bold',
-  },
-  stockCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 20,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  stockCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  stockCardTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  stockCardSubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  stockFields: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  stepperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    marginVertical: 6,
-  },
-  stepperBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.secondaryContainer,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stepperInput: {
-    width: 90,
-    height: 52,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    backgroundColor: Colors.background,
-  },
-  quickAddRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 8,
-  },
-  quickAddChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.secondaryContainer,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 4,
-  },
-  quickAddChipText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  unitChipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  unitChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: Colors.background,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  unitChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  unitChipText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  unitChipTextActive: {
-    color: '#FFF',
-  },
-  hintText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    marginTop: 4,
-    fontStyle: 'italic',
-  },
-  saveButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 16,
-    height: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 14,
-    elevation: 3,
-  },
-  saveButtonText: {
-    color: '#FFF',
-    fontSize: 19,
-    fontWeight: 'bold',
-  },
-});
+function createStyles(colors: any, isDarkMode: boolean) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 18,
+      paddingTop: 50,
+      paddingBottom: 14,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    backButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    topBarTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    scrollContent: {
+      padding: 18,
+      paddingBottom: 50,
+    },
+    addPhotoBox: {
+      height: 130,
+      borderRadius: 16,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: colors.border,
+      backgroundColor: isDarkMode ? colors.surfaceCard : colors.surfaceWarm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+      overflow: 'hidden',
+    },
+    photoPlaceholder: {
+      alignItems: 'center',
+    },
+    cameraIconCircle: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: isDarkMode ? colors.surface : '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 8,
+    },
+    addPhotoText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    photoPreviewWrapper: {
+      width: '100%',
+      height: '100%',
+      position: 'relative',
+    },
+    photoPreview: {
+      width: '100%',
+      height: '100%',
+    },
+    changePhotoBadge: {
+      position: 'absolute',
+      bottom: 8,
+      right: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0,0,0,0.65)',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 12,
+      gap: 4,
+    },
+    changePhotoText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    fieldGroup: {
+      marginBottom: 16,
+    },
+    fieldLabel: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      marginBottom: 6,
+    },
+    input: {
+      backgroundColor: colors.inputBackground,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+      color: colors.textPrimary,
+    },
+    multilineInput: {
+      minHeight: 70,
+      textAlignVertical: 'top',
+    },
+    twoColRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 16,
+    },
+    colHalf: {
+      flex: 1,
+    },
+    chipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    smallChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: isDarkMode ? colors.surfaceCard : colors.surfaceWarm,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    smallChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    smallChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    smallChipTextActive: {
+      color: '#FFFFFF',
+    },
+    timePresetsRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 16,
+    },
+    timeChip: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: isDarkMode ? colors.surfaceCard : colors.surfaceWarm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 4,
+    },
+    timeChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    stockCard: {
+      backgroundColor: colors.cardBackground,
+      borderRadius: 16,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 16,
+    },
+    stockCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    stockCardTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    stockCardSubtitle: {
+      fontSize: 12,
+      color: colors.textMuted,
+    },
+    warningNotice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDarkMode ? colors.surfaceCard : colors.surfaceWarm,
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      marginBottom: 20,
+      gap: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    warningNoticeText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    saveButton: {
+      backgroundColor: colors.primary,
+      paddingVertical: 16,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    saveButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    cancelButton: {
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: 'transparent',
+    },
+    cancelButtonText: {
+      color: colors.textSecondary,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+  });
+}

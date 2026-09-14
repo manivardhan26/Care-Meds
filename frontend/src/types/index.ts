@@ -48,7 +48,11 @@ export interface DailyMedicineItem {
   expiryStatus: ExpiryStatus;
 }
 
-export type VoiceLanguage = 'en-US' | 'te-IN';
+export type VoiceLanguage = 'en-US' | 'te-IN' | 'hi-IN';
+
+export type SpeechSpeedPreset = 'slow' | 'normal' | 'fast';
+export type VoiceProviderType = 'device' | 'cloud';
+export type VoiceGenderPreference = 'female' | 'male';
 
 export interface AppSettings {
   voiceRemindersEnabled: boolean;
@@ -56,4 +60,37 @@ export interface AppSettings {
   snoozeMinutes: number;
   isDarkMode: boolean;
   voiceLanguage?: VoiceLanguage;
+  selectedVoiceIdentifier?: string;
+  voiceGender?: VoiceGenderPreference;
+  speechSpeed?: SpeechSpeedPreset;
+  speechPitch?: number;
+  voiceProvider?: VoiceProviderType;
+  preferredVoiceByLanguage?: Partial<Record<VoiceLanguage, string>>;
+  patientName?: string;
+  patientAge?: string;
+}
+
+export interface SnoozeRecord {
+  medicineId: string;
+  medicineName: string;
+  dosage: string;
+  instructions: string;
+  scheduledTime: string;
+  dateString: string;
+  snoozedAt: number;
+  snoozeUntil: number;
+  snoozeMinutes: number;
+  notificationId?: string;
+}
+
+export interface ReminderNotificationData {
+  medicineId: string;
+  medicineName: string;
+  dosage: string;
+  instructions: string;
+  scheduledTime: string;
+  isSnooze?: boolean;
+  snoozeMinutes?: number;
+  dateString?: string;
+  type?: string;
 }
