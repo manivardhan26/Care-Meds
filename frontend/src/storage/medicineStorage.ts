@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Medicine, AdherenceLog, AppSettings, AdherenceStatus } from '../types';
+import { Medicine, AdherenceLog, AppSettings, AdherenceStatus, SnoozeRecord } from '../types';
 import {
   getMedicinesApi,
   saveMedicineApi,
@@ -14,6 +14,7 @@ import {
 const MEDICINES_KEY = '@caremeds_medicines';
 const ADHERENCE_KEY = '@caremeds_adherence_logs';
 const SETTINGS_KEY = '@caremeds_settings';
+const SNOOZE_KEY = '@caremeds_active_snoozes';
 
 const DEFAULT_SETTINGS: AppSettings = {
   voiceRemindersEnabled: true,
@@ -21,7 +22,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   snoozeMinutes: 15,
   isDarkMode: false,
   voiceLanguage: 'en-US',
+  voiceGender: 'female',
+  patientName: 'CareMeds Patient',
+  patientAge: '',
 };
+
+let memorySnoozes: SnoozeRecord[] | null = null;
 
 const SEED_MEDICINES: Medicine[] = [
   {
@@ -128,6 +134,7 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
 
   const normalizedMedicine: Omit<Medicine, 'id' | 'createdAt'> = {
     ...medicine,
+    imageUri: medicine.imageUri !== undefined ? medicine.imageUri : (existing?.imageUri ?? null),
     supplyCount: resolvedQty,
     currentQuantity: resolvedQty,
     stockTrackingEnabled: typeof medicine.stockTrackingEnabled === 'boolean'
@@ -176,6 +183,12 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
   return updatedMedicine;
 }
 
+let onDeleteMedicineCallback: ((id: string) => void | Promise<void>) | null = null;
+
+export function setOnDeleteMedicineCallback(cb: (id: string) => void | Promise<void>) {
+  onDeleteMedicineCallback = cb;
+}
+
 export async function deleteMedicine(id: string): Promise<void> {
   const medicines = await getMedicines();
   const filtered = medicines.filter((m) => m.id !== id);
@@ -194,6 +207,18 @@ export async function deleteMedicine(id: string): Promise<void> {
     await AsyncStorage.setItem(ADHERENCE_KEY, JSON.stringify(remainingLogs));
   } catch (e) {
     console.warn('AsyncStorage delete adherence logs warning:', e);
+  }
+
+  // Clear active snooze record if any exists
+  await clearSnoozeRecord(id);
+
+  // Trigger notification service cancellation callback
+  if (onDeleteMedicineCallback) {
+    try {
+      await onDeleteMedicineCallback(id);
+    } catch (e) {
+      console.warn('onDeleteMedicineCallback error:', e);
+    }
   }
 
   // Sync deletion with backend API
@@ -311,10 +336,55 @@ export async function logAdherence(
     }
   }
 
+  // Clear active snooze if medicine has been resolved (TAKEN or SKIPPED)
+  if (status === 'TAKEN' || status === 'SKIPPED') {
+    await clearSnoozeRecord(medicineId);
+  }
+
   // Asynchronously sync with backend API
   logAdherenceApi(medicineId, medicineName, dosage, scheduledTime, dateString, status, notes).catch(() => {});
 
   return record;
+}
+
+export async function getActiveSnoozes(): Promise<SnoozeRecord[]> {
+  try {
+    const data = await AsyncStorage.getItem(SNOOZE_KEY);
+    const parsed: SnoozeRecord[] = data ? JSON.parse(data) : [];
+    memorySnoozes = parsed;
+    return parsed;
+  } catch {
+    return memorySnoozes || [];
+  }
+}
+
+export async function getActiveSnoozeForMedicine(medicineId: string): Promise<SnoozeRecord | null> {
+  const all = await getActiveSnoozes();
+  return all.find((s) => s.medicineId === medicineId) || null;
+}
+
+export async function saveSnoozeRecord(record: SnoozeRecord): Promise<void> {
+  const all = await getActiveSnoozes();
+  // Filter out any existing snooze for the same medicine to prevent duplicate records
+  const filtered = all.filter((s) => s.medicineId !== record.medicineId);
+  filtered.push(record);
+  memorySnoozes = filtered;
+  try {
+    await AsyncStorage.setItem(SNOOZE_KEY, JSON.stringify(filtered));
+  } catch (e) {
+    console.warn('AsyncStorage saveSnoozeRecord error:', e);
+  }
+}
+
+export async function clearSnoozeRecord(medicineId: string): Promise<void> {
+  const all = await getActiveSnoozes();
+  const filtered = all.filter((s) => s.medicineId !== medicineId);
+  memorySnoozes = filtered;
+  try {
+    await AsyncStorage.setItem(SNOOZE_KEY, JSON.stringify(filtered));
+  } catch (e) {
+    console.warn('AsyncStorage clearSnoozeRecord error:', e);
+  }
 }
 
 export async function getSettings(): Promise<AppSettings> {

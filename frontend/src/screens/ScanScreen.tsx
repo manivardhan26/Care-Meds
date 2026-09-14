@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,17 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Colors } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
+import { ThemeColors } from '../theme/colors';
 import { SAMPLE_PACKAGES } from '../utils/ocrParser';
 
 export default function ScanScreen() {
   const navigation = useNavigation<any>();
+  const { colors, isDarkMode } = useTheme();
 
   const processImageResult = (result: ImagePicker.ImagePickerResult) => {
     if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
       navigation.navigate('ScanReview', {
         extracted: {
           name: 'Scanned Prescription',
@@ -25,6 +28,7 @@ export default function ScanScreen() {
           instructions: 'Take 1 tablet daily in the morning',
           expiryDate: '2027-08-31',
           supplyCount: 30,
+          imageUri: asset.uri,
         },
       });
     }
@@ -79,11 +83,13 @@ export default function ScanScreen() {
     navigation.navigate('ScanReview', { extracted: sample });
   };
 
+  const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
+
   return (
     <View style={styles.container}>
       <View style={styles.headerBar}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={26} color={Colors.textPrimary} />
+          <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Scan Medicine Box</Text>
       </View>
@@ -95,7 +101,7 @@ export default function ScanScreen() {
         </Text>
 
         <TouchableOpacity style={styles.captureButton} onPress={handlePickImage}>
-          <Ionicons name="camera" size={28} color="#FFF" />
+          <Ionicons name="camera" size={28} color={isDarkMode ? colors.onPrimary : '#FFF'} />
           <Text style={styles.captureButtonText}>Capture / Pick Package Photo</Text>
         </TouchableOpacity>
 
@@ -120,7 +126,7 @@ export default function ScanScreen() {
               <Text style={styles.sampleInstructions}>{sample.instructions}</Text>
               <Text style={styles.sampleExpiry}>Expires: {sample.expiryDate}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={22} color={Colors.primary} />
+            <Ionicons name="chevron-forward" size={22} color={colors.primary} />
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -128,102 +134,103 @@ export default function ScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 54,
-    paddingBottom: 16,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 60,
-  },
-  introText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-    lineHeight: 24,
-    marginBottom: 20,
-  },
-  captureButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 16,
-    height: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    elevation: 3,
-  },
-  captureButtonText: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    fontWeight: 'bold',
-    marginHorizontal: 10,
-  },
-  sampleSectionTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: Colors.textPrimary,
-    marginBottom: 12,
-  },
-  sampleCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    elevation: 1,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  sampleName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.primary,
-  },
-  sampleInstructions: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginTop: 3,
-  },
-  sampleExpiry: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    marginTop: 4,
-  },
-});
+const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingTop: 54,
+      paddingBottom: 16,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    backButton: {
+      width: 44,
+      height: 44,
+      justifyContent: 'center',
+    },
+    headerTitle: {
+      fontSize: 22,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+    },
+    scrollContent: {
+      padding: 20,
+      paddingBottom: 60,
+    },
+    introText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      lineHeight: 24,
+      marginBottom: 20,
+    },
+    captureButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 16,
+      height: 60,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      elevation: 3,
+    },
+    captureButtonText: {
+      color: isDarkMode ? colors.onPrimary : '#FFF',
+      fontSize: 18,
+      fontWeight: 'bold',
+    },
+    dividerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: 24,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    dividerText: {
+      fontSize: 13,
+      color: colors.textMuted,
+      fontWeight: 'bold',
+      marginHorizontal: 10,
+    },
+    sampleSectionTitle: {
+      fontSize: 17,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+      marginBottom: 12,
+    },
+    sampleCard: {
+      backgroundColor: colors.surfaceCard,
+      borderRadius: 14,
+      padding: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      elevation: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sampleName: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.primary,
+    },
+    sampleInstructions: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: 3,
+    },
+    sampleExpiry: {
+      fontSize: 13,
+      color: colors.textMuted,
+      marginTop: 4,
+    },
+  });

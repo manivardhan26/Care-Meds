@@ -1,19 +1,6 @@
 {
   "medicines": [
     {
-      "id": "med_1",
-      "name": "Aspirin Cardio",
-      "dosage": "81mg",
-      "instructions": "Take 1 tablet daily with breakfast",
-      "notes": "Take 1 tablet daily with breakfast",
-      "expiryDate": "2027-12-31",
-      "frequency": "Once daily",
-      "reminderTime": "08:00 AM",
-      "timeOfDay": "Morning",
-      "supplyCount": 27,
-      "createdAt": 1788286000293
-    },
-    {
       "id": "med_2",
       "name": "Lisinopril",
       "dosage": "10mg",
@@ -23,8 +10,9 @@
       "frequency": "Once daily",
       "reminderTime": "09:00 AM",
       "timeOfDay": "Morning",
-      "supplyCount": 15,
-      "createdAt": 1787854000293
+      "supplyCount": 10,
+      "createdAt": 1787854000293,
+      "currentQuantity": 10
     },
     {
       "id": "med_3",
@@ -36,21 +24,9 @@
       "frequency": "Once daily",
       "reminderTime": "06:00 PM",
       "timeOfDay": "Evening",
-      "supplyCount": 44,
-      "createdAt": 1788545200293
-    },
-    {
-      "id": "med_4",
-      "name": "Atorvastatin (Expired Sample)",
-      "dosage": "20mg",
-      "instructions": "Take 1 tablet at bedtime",
-      "notes": "Check with pharmacy for replacement bottle",
-      "expiryDate": "2025-01-10",
-      "frequency": "Once daily",
-      "reminderTime": "09:00 PM",
-      "timeOfDay": "Night",
-      "supplyCount": 8,
-      "createdAt": 1785262000295
+      "supplyCount": 41,
+      "createdAt": 1788545200293,
+      "currentQuantity": 41
     },
     {
       "name": "Paracetamol",
@@ -61,12 +37,162 @@
       "frequency": "Once daily",
       "reminderTime": "08:00 AM",
       "timeOfDay": "Morning",
-      "supplyCount": 29,
+      "supplyCount": 26,
       "id": "med_1788721815818",
-      "createdAt": 1788721815818
+      "createdAt": 1788721815818,
+      "currentQuantity": 26
+    },
+    {
+      "name": "Aspirin Cardio",
+      "dosage": "81mg",
+      "instructions": "Take 1 tablet daily with morning meal",
+      "notes": "Take 1 tablet daily with morning meal",
+      "expiryDate": "2027-12-31",
+      "frequency": "Once daily",
+      "reminderTime": "08:00 AM",
+      "timeOfDay": "Morning",
+      "imageUri": null,
+      "supplyCount": 28,
+      "stockTrackingEnabled": true,
+      "currentQuantity": 28,
+      "unitType": "tablets",
+      "quantityPerDose": 1,
+      "lowStockThreshold": 3,
+      "id": "med_1789231403612",
+      "createdAt": 1789231403612
     }
   ],
   "adherenceLogs": [
+    {
+      "id": "log_1789323806187_unm6",
+      "medicineId": "med_1789231403612",
+      "medicineName": "Aspirin Cardio",
+      "dosage": "81mg",
+      "scheduledTime": "08:00 AM",
+      "dateString": "2026-09-13",
+      "actionTimestamp": 1789323806187,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789323805436_vld5",
+      "medicineId": "med_1788721815818",
+      "medicineName": "Paracetamol",
+      "dosage": "500mg",
+      "scheduledTime": "08:00 AM",
+      "dateString": "2026-09-13",
+      "actionTimestamp": 1789323805436,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789323804114_7mz3",
+      "medicineId": "med_3",
+      "medicineName": "Metformin",
+      "dosage": "500mg",
+      "scheduledTime": "06:00 PM",
+      "dateString": "2026-09-13",
+      "actionTimestamp": 1789323804114,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789323744825_oryz",
+      "medicineId": "med_2",
+      "medicineName": "Lisinopril",
+      "dosage": "10mg",
+      "scheduledTime": "09:00 AM",
+      "dateString": "2026-09-13",
+      "actionTimestamp": 1789323744825,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789231430061_uked",
+      "medicineId": "med_1789231403612",
+      "medicineName": "Aspirin Cardio",
+      "dosage": "81mg",
+      "scheduledTime": "08:00 AM",
+      "dateString": "2026-09-12",
+      "actionTimestamp": 1789231430061,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789205267008_x7am",
+      "medicineId": "med_1788721815818",
+      "medicineName": "Paracetamol",
+      "dosage": "500mg",
+      "scheduledTime": "08:00 AM",
+      "dateString": "2026-09-12",
+      "actionTimestamp": 1789205267008,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789205263566_9tvh",
+      "medicineId": "med_3",
+      "medicineName": "Metformin",
+      "dosage": "500mg",
+      "scheduledTime": "06:00 PM",
+      "dateString": "2026-09-12",
+      "actionTimestamp": 1789205263566,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789205261152_q61s",
+      "medicineId": "med_2",
+      "medicineName": "Lisinopril",
+      "dosage": "10mg",
+      "scheduledTime": "09:00 AM",
+      "dateString": "2026-09-12",
+      "actionTimestamp": 1789231706044,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789150814353_5rik",
+      "medicineId": "med_2",
+      "medicineName": "Lisinopril",
+      "dosage": "10mg",
+      "scheduledTime": "09:00 AM",
+      "dateString": "2026-09-11",
+      "actionTimestamp": 1789150814353,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789038933046_yjrs",
+      "medicineId": "med_2",
+      "medicineName": "Lisinopril",
+      "dosage": "10mg",
+      "scheduledTime": "09:00 AM",
+      "dateString": "2026-09-10",
+      "actionTimestamp": 1789038993093,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1788958658244_cwai",
+      "medicineId": "med_3",
+      "medicineName": "Metformin",
+      "dosage": "500mg",
+      "scheduledTime": "06:00 PM",
+      "dateString": "2026-09-09",
+      "actionTimestamp": 1788958658244,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1788956620287_c7hg",
+      "medicineId": "med_2",
+      "medicineName": "Lisinopril",
+      "dosage": "10mg",
+      "scheduledTime": "09:00 AM",
+      "dateString": "2026-09-09",
+      "actionTimestamp": 1788956620287,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1788956567919_ma68",
+      "medicineId": "med_1788721815818",
+      "medicineName": "Paracetamol",
+      "dosage": "500mg",
+      "scheduledTime": "08:00 AM",
+      "dateString": "2026-09-09",
+      "actionTimestamp": 1788958647702,
+      "status": "TAKEN"
+    },
     {
       "id": "log_1788721826585_l6yk",
       "medicineId": "med_1788721815818",
@@ -86,23 +212,22 @@
       "dateString": "2026-09-06",
       "actionTimestamp": 1788720938471,
       "status": "TAKEN"
-    },
-    {
-      "id": "log_1788720922257_4udv",
-      "medicineId": "med_1",
-      "medicineName": "Aspirin Cardio",
-      "dosage": "81mg",
-      "scheduledTime": "08:00 AM",
-      "dateString": "2026-09-06",
-      "actionTimestamp": 1788720922257,
-      "status": "TAKEN"
     }
   ],
   "settings": {
     "voiceRemindersEnabled": true,
     "soundAlertsEnabled": true,
     "snoozeMinutes": 15,
-    "isDarkMode": true,
-    "voiceLanguage": "en-US"
+    "isDarkMode": false,
+    "voiceLanguage": "en-US",
+    "speechSpeed": "fast",
+    "selectedVoiceIdentifier": "en-US-language",
+    "preferredVoiceByLanguage": {
+      "te-IN": "te-IN-language",
+      "hi-IN": "hi-IN-language",
+      "en-US": "en-US-language"
+    },
+    "patientName": "Mark Zuckerberg",
+    "patientAge": ""
   }
 }

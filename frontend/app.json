@@ -5,11 +5,28 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
+
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#006874"
       },
-      "package": "com.caremeds.app"
-    }
+      "package": "com.caremeds.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#006874"
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }
