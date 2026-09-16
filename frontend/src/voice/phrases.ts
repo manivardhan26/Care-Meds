@@ -43,7 +43,7 @@ export const VOICE_TEMPLATES: Record<VoiceLanguage, LocalizedVoiceTemplates> = {
       `Important reminder. ${name} has expired. Please check with your pharmacist or doctor before taking it.`,
     snooze: (name: string, dose: string) =>
       `Reminder. It is time to take your snoozed medicine: ${name}, dosage ${dose}.`,
-    test: "Hello. This is a voice test for CareMeds. Your medication reminders will sound like this.",
+    test: "Hello. This is a voice test for Pill Me On Time. Your medication reminders will sound like this.",
   },
 
   'te-IN': {

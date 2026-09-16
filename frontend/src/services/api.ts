@@ -23,7 +23,7 @@ export function getApiBaseUrl(): string {
   }
 
   // Fallback to active Wi-Fi LAN IP
-  return 'http://192.168.0.116:5000/api';
+  return 'http://10.90.106.114:5000/api';
 }
 
 const API_BASE_URL = getApiBaseUrl();

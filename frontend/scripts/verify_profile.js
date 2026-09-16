@@ -29,7 +29,7 @@ const settingsCode = fs.readFileSync(path.resolve(__dirname, '../src/screens/Set
 
 assert(settingsCode.includes('styles.avatarCircle'), 'Renders avatar circle container');
 assert(settingsCode.includes('<Ionicons name="person"'), 'Renders large profile icon');
-assert(settingsCode.includes('settings.patientName?.trim() || \'CareMeds Patient\''), 'Defaults to "CareMeds Patient" if name empty');
+assert(settingsCode.includes('settings.patientName?.trim() || \'Pill Me On Time Patient\''), 'Defaults to "Pill Me On Time Patient" if name empty');
 assert(settingsCode.includes('Senior Medication Companion'), 'Subtitle is exactly "Senior Medication Companion"');
 assert(settingsCode.includes('handleOpenEditProfile'), 'Edit Profile button triggers handleOpenEditProfile');
 assert(settingsCode.includes('styles.ageBadge'), 'Displays age badge when age is provided');
@@ -70,7 +70,7 @@ assert(backendTypesCode.includes('patientName?: string;'), 'Backend AppSettings 
 assert(backendTypesCode.includes('patientAge?: string;'), 'Backend AppSettings includes patientAge');
 
 const storageCode = fs.readFileSync(path.resolve(__dirname, '../src/storage/medicineStorage.ts'), 'utf-8');
-assert(storageCode.includes("patientName: 'CareMeds Patient'"), 'DEFAULT_SETTINGS has patientName default');
+assert(storageCode.includes("patientName: 'Pill Me On Time Patient'"), 'DEFAULT_SETTINGS has patientName default');
 assert(storageCode.includes("patientAge: ''"), 'DEFAULT_SETTINGS has patientAge default');
 assert(storageCode.includes('saveSettings'), 'saveSettings persists to AsyncStorage and syncs to API');
 

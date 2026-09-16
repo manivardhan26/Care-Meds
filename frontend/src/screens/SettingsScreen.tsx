@@ -11,6 +11,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +27,8 @@ import {
   getPreviewSentence,
   isVoiceInstalledForLanguage,
 } from '../voice';
+
+const APP_LOGO = require('../../assets/app_logo.png');
 
 const LANGUAGES: { code: VoiceLanguage; name: string; nativeName: string }[] = [
   { code: 'en-US', name: 'English (United States)', nativeName: 'English' },
@@ -92,7 +95,7 @@ export default function SettingsScreen() {
   };
 
   const handleOpenEditProfile = () => {
-    setProfileNameInput(settings.patientName?.trim() || 'CareMeds Patient');
+    setProfileNameInput(settings.patientName?.trim() || 'Pill Me On Time Patient');
     setProfileAgeInput(settings.patientAge?.trim() || '');
     setIsEditProfileOpen(true);
   };
@@ -104,7 +107,7 @@ export default function SettingsScreen() {
   const handleSaveProfile = async () => {
     const trimmedName = profileNameInput.trim();
     if (!trimmedName) {
-      Alert.alert('Missing Name', 'Please enter a patient name, or use "CareMeds Patient".');
+      Alert.alert('Missing Name', 'Please enter a patient name, or use "Pill Me On Time Patient".');
       return;
     }
 
@@ -166,11 +169,27 @@ export default function SettingsScreen() {
     await stopVoicePreview();
     setIsPlayingPreview(false);
 
-    const updated = await saveVoiceGenderPreference(gender);
+    // 1. Resolve best voice for current language matching this gender
+    const voiceResult = await selectBestVoice(currentLang, undefined, gender);
+
+    // 2. Persist gender preference AND immediately update the saved voice ID for currentLang
+    let updated: AppSettings;
+    if (voiceResult.isAvailable && voiceResult.voiceIdentifier) {
+      const current = await getSettings();
+      const preferredMap = {
+        ...(current.preferredVoiceByLanguage || {}),
+        [currentLang]: voiceResult.voiceIdentifier,
+      };
+      updated = await saveSettings({
+        voiceGender: gender,
+        selectedVoiceIdentifier: voiceResult.voiceIdentifier,
+        preferredVoiceByLanguage: preferredMap,
+      });
+    } else {
+      updated = await saveVoiceGenderPreference(gender);
+    }
     setSettings(updated);
 
-    // Check if target language supports this gender
-    const voiceResult = await selectBestVoice(currentLang, undefined, gender);
     if (voiceResult.isAvailable && voiceResult.genderMatched === false) {
       setGenderFallbackNotice(
         `${gender === 'male' ? 'Male' : 'Female'} voice for this language is not available on this device. Using available voice.`
@@ -248,7 +267,7 @@ export default function SettingsScreen() {
           <View style={styles.profileInfoCol}>
             <View style={styles.profileNameRow}>
               <Text style={styles.profileName} numberOfLines={1}>
-                {settings.patientName?.trim() || 'CareMeds Patient'}
+                {settings.patientName?.trim() || 'Pill Me On Time Patient'}
               </Text>
               {Boolean(settings.patientAge?.trim()) && (
                 <View style={styles.ageBadge}>
@@ -601,22 +620,22 @@ export default function SettingsScreen() {
             style={styles.cardRow}
             onPress={() =>
               Alert.alert(
-                'About CareMeds',
-                'CareMeds v1.0.0\nA caring, high-contrast, elderly-friendly medication manager with clear voice reminders.'
+                'About Pill Me On Time',
+                'Pill Me On Time v1.0.0\nA caring, high-contrast, elderly-friendly medication manager with clear voice reminders.'
               )
             }
             activeOpacity={0.7}
           >
             <View style={styles.iconCircle}>
-              <Ionicons
-                name="information-circle-outline"
-                size={20}
-                color={isDarkMode ? colors.accentTeal : colors.primary}
+              <Image
+                source={APP_LOGO}
+                style={{ width: 26, height: 26, borderRadius: 13 }}
+                resizeMode="contain"
               />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>About App</Text>
-              <Text style={styles.rowSubtitle}>Version 1.0.0 • English • తెలుగు • हिन्दी</Text>
+              <Text style={styles.rowSubtitle}>Pill Me On Time v1.0.0 • English • తెలుగు • हिन्दी</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
@@ -657,7 +676,7 @@ export default function SettingsScreen() {
             </View>
 
             <Text style={styles.modalSubtitle}>
-              Personalize your name and optional age for your CareMeds companion.
+              Personalize your name and optional age for your Pill Me On Time companion.
             </Text>
 
             {/* Patient Name Input */}

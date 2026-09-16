@@ -36,20 +36,24 @@ export async function selectBestVoice(
   };
 
   // 1. If user previously chose a specific voice, verify it strictly belongs to this language
+  // AND matches the requested gender (if genderPreference is specified)
   if (preferredVoiceIdentifier) {
     const userVoice = languageVoices.find((v) => v.identifier === preferredVoiceIdentifier);
     if (userVoice) {
       const isGenderMatch = !genderPreference || userVoice.gender === genderPreference || userVoice.gender === 'unknown';
-      return {
-        isAvailable: true,
-        voice: userVoice,
-        voiceIdentifier: userVoice.identifier,
-        language: userVoice.language || targetLanguage,
-        isEnhanced: userVoice.isEnhanced,
-        genderMatched: isGenderMatch,
-        genderRequested: genderPreference,
-        matchType: 'user-selected',
-      };
+      if (isGenderMatch) {
+        return {
+          isAvailable: true,
+          voice: userVoice,
+          voiceIdentifier: userVoice.identifier,
+          language: userVoice.language || targetLanguage,
+          isEnhanced: userVoice.isEnhanced,
+          genderMatched: true,
+          genderRequested: genderPreference,
+          matchType: 'user-selected',
+        };
+      }
+      // If userVoice is known to be a different gender than requested, bypass it and find matching gender below
     }
   }
 

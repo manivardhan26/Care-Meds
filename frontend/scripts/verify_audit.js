@@ -433,7 +433,7 @@ console.log('[Domain 7: Expo Configuration & APK Readiness]');
 const appJsonPath = path.join(__dirname, '../app.json');
 const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
 
-assert(appJson.expo.name === 'CareMeds', 'App name is configured as CareMeds');
+assert(appJson.expo.name === 'Pill Me On Time', 'App name is configured as Pill Me On Time');
 assert(appJson.expo.slug === 'caremeds', 'App slug is configured');
 assert(appJson.expo.android && appJson.expo.android.package === 'com.caremeds.app', 'Android package is set to com.caremeds.app');
 assert(Boolean(appJson.expo.icon), 'App icon is configured');

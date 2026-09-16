@@ -159,10 +159,11 @@ class ReminderSpeechService {
           ? customOptions.rate
           : getRateForSpeedPreset(settings.speechSpeed);
 
+      const defaultGenderPitch = settings.voiceGender === 'male' ? 0.92 : 1.05;
       const pitch =
         typeof customOptions?.pitch === 'number'
           ? customOptions.pitch
-          : settings.speechPitch || 1.0;
+          : settings.speechPitch || defaultGenderPitch;
 
       const provider = getVoiceProvider(settings.voiceProvider || 'device');
 

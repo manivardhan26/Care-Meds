@@ -25,7 +25,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
-    service: 'CareMeds REST API',
+    service: 'Pill Me On Time REST API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
   });
@@ -51,7 +51,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`========================================`);
-    console.log(`  CareMeds Backend Server Running`);
+    console.log(`  Pill Me On Time Backend Server Running`);
     console.log(`  Local:   http://localhost:${PORT}/api/health`);
     console.log(`  Port:    ${PORT}`);
     console.log(`  Time:    ${new Date().toLocaleTimeString()}`);
