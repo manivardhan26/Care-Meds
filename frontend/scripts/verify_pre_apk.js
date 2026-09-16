@@ -141,7 +141,7 @@ console.log('[Domain 10: Profile]');
 test('Profile displays large avatar, patient name, subtitle, and provides edit modal with validation', () => {
   const setCode = fs.readFileSync(path.resolve(__dirname, '../src/screens/SettingsScreen.tsx'), 'utf-8');
   assert(setCode.includes('Senior Medication Companion'), 'Displays subtitle');
-  assert(setCode.includes('settings.patientName?.trim() || \'CareMeds Patient\''), 'Displays patient name');
+  assert(setCode.includes('settings.patientName?.trim() || \'Pill Me On Time Patient\''), 'Displays patient name');
   assert(setCode.includes('handleOpenEditProfile'), 'Has handleOpenEditProfile');
   assert(setCode.includes('handleSaveProfile'), 'Has handleSaveProfile');
   assert(setCode.includes('Missing Name'), 'Rejects empty patient name');

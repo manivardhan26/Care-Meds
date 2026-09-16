@@ -10,9 +10,9 @@
       "frequency": "Once daily",
       "reminderTime": "09:00 AM",
       "timeOfDay": "Morning",
-      "supplyCount": 10,
+      "supplyCount": 8,
       "createdAt": 1787854000293,
-      "currentQuantity": 10
+      "currentQuantity": 8
     },
     {
       "id": "med_3",
@@ -24,9 +24,9 @@
       "frequency": "Once daily",
       "reminderTime": "06:00 PM",
       "timeOfDay": "Evening",
-      "supplyCount": 41,
+      "supplyCount": 40,
       "createdAt": 1788545200293,
-      "currentQuantity": 41
+      "currentQuantity": 40
     },
     {
       "name": "Paracetamol",
@@ -63,6 +63,36 @@
     }
   ],
   "adherenceLogs": [
+    {
+      "id": "log_1789555055634_86ag",
+      "medicineId": "med_2",
+      "medicineName": "Lisinopril",
+      "dosage": "10mg",
+      "scheduledTime": "09:00 AM",
+      "dateString": "2026-09-16",
+      "actionTimestamp": 1789555055634,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789413312154_b72h",
+      "medicineId": "med_3",
+      "medicineName": "Metformin",
+      "dosage": "500mg",
+      "scheduledTime": "06:00 PM",
+      "dateString": "2026-09-15",
+      "actionTimestamp": 1789413312154,
+      "status": "TAKEN"
+    },
+    {
+      "id": "log_1789413288633_366t",
+      "medicineId": "med_2",
+      "medicineName": "Lisinopril",
+      "dosage": "10mg",
+      "scheduledTime": "09:00 AM",
+      "dateString": "2026-09-15",
+      "actionTimestamp": 1789413288633,
+      "status": "TAKEN"
+    },
     {
       "id": "log_1789323806187_unm6",
       "medicineId": "med_1789231403612",
@@ -221,13 +251,14 @@
     "isDarkMode": false,
     "voiceLanguage": "en-US",
     "speechSpeed": "fast",
-    "selectedVoiceIdentifier": "en-US-language",
+    "selectedVoiceIdentifier": "en-us-x-iol-local",
     "preferredVoiceByLanguage": {
       "te-IN": "te-IN-language",
       "hi-IN": "hi-IN-language",
-      "en-US": "en-US-language"
+      "en-US": "en-us-x-iol-local"
     },
     "patientName": "Mark Zuckerberg",
-    "patientAge": ""
+    "patientAge": "25",
+    "voiceGender": "male"
   }
 }

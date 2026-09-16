@@ -8,7 +8,7 @@ const expoUrl = `exp://${ip}:${port}`;
 const httpUrl = `http://${ip}:${port}`;
 
 async function main() {
-  const artifactDir = 'C:\\Users\\hello\\.gemini\\antigravity-ide\\brain\\48acca8e-03ae-4ca5-a675-a590419c2485';
+  const artifactDir = 'C:\\Users\\hello\\.gemini\\antigravity-ide\\brain\\da38a93d-8439-4821-a454-6a9f4d5debed';
   const qrPngPath = path.resolve(__dirname, '../expo_qr.png');
   const artifactExpPng = path.join(artifactDir, 'expo_qr.png');
   const artifactHttpPng = path.join(artifactDir, 'expo_qr_http.png');

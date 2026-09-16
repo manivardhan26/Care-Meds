@@ -47,7 +47,7 @@ export async function playVoicePreview(options: PreviewOptions): Promise<Selecte
     voiceId: selection.voiceIdentifier,
     language: selection.language,
     rate,
-    pitch: 1.0,
+    pitch: genderPreference === 'male' ? 0.92 : 1.05,
     force: true,
     onStart,
     onDone,

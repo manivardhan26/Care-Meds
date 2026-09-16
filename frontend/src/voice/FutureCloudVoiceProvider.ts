@@ -5,7 +5,7 @@ import { defaultDeviceVoiceProvider } from './DeviceVoiceProvider';
  * Architectural blueprint for future Cloud AI TTS providers (e.g., ElevenLabs, Google Cloud Neural2, OpenAI TTS).
  * This provider implements the exact same VoiceProvider interface as DeviceVoiceProvider.
  *
- * When an API key and cloud backend are provisioned in the future, CareMeds can toggle between
+ * When an API key and cloud backend are provisioned in the future, Pill Me On Time can toggle between
  * 'device' and 'cloud' without modifying any reminder logic or UI screens.
  */
 export interface CloudVoiceConfig {
@@ -42,17 +42,17 @@ export class FutureCloudVoiceProvider implements VoiceProvider {
     return [
       {
         identifier: 'cloud_ai_caring_en',
-        name: 'CareMeds Warm Companion (Cloud AI)',
+        name: 'Pill Me On Time Warm Companion (Cloud AI)',
         quality: 'Enhanced',
         language: 'en-US',
         locale: 'en-US',
         isEnhanced: true,
-        displayName: 'CareMeds Caring Voice (Cloud AI - High Clarity)',
+        displayName: 'Pill Me On Time Caring Voice (Cloud AI - High Clarity)',
         gender: 'female',
       },
       {
         identifier: 'cloud_ai_indic_te',
-        name: 'CareMeds Telugu Natural AI (Cloud AI)',
+        name: 'Pill Me On Time Telugu Natural AI (Cloud AI)',
         quality: 'Enhanced',
         language: 'te-IN',
         locale: 'te-IN',
@@ -62,7 +62,7 @@ export class FutureCloudVoiceProvider implements VoiceProvider {
       },
       {
         identifier: 'cloud_ai_indic_hi',
-        name: 'CareMeds Hindi Natural AI (Cloud AI)',
+        name: 'Pill Me On Time Hindi Natural AI (Cloud AI)',
         quality: 'Enhanced',
         language: 'hi-IN',
         locale: 'hi-IN',

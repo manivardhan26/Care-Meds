@@ -35,29 +35,31 @@ export function detectVoiceGender(voice: { identifier?: string; name?: string })
   const text = `${voice.identifier || ''} ${voice.name || ''}`.toLowerCase();
 
   // 1. Explicit tokens (check 'female' before 'male' to prevent substring collision)
-  if (text.includes('female') || text.includes('woman') || text.includes('femme')) {
+  if (text.includes('female') || text.includes('woman') || text.includes('femme') || text.includes('#female')) {
     return 'female';
   }
   // Check for standalone word 'male' or 'man' to avoid matching 'female'
-  if (/\b(male|homme|man)\b/.test(text) || text.includes('_male') || text.includes('-male')) {
+  if (/\b(male|homme|man)\b/.test(text) || text.includes('_male') || text.includes('-male') || text.includes('#male')) {
     return 'male';
   }
 
   // 2. Google Speech Services (Android) voice token conventions:
-  const femaleGoogleTokens = [
+  // Tokens like -sfg, -tpf, -iol map to male voices on Android
+  const maleGoogleTokens = [
     '-sfg', '-tpf', '-iol', '-tef', '-sfc', '-hfe', '-lfe',
     '-dfa', '-wfb', '-cfb', '-hfc', '-gfa', '-efc', '-zfc'
   ];
-  if (femaleGoogleTokens.some((t) => text.includes(t))) {
-    return 'female';
+  if (maleGoogleTokens.some((t) => text.includes(t))) {
+    return 'male';
   }
 
-  const maleGoogleTokens = [
+  // Tokens like -iom, -cwm, -iob, -tem map to female voices on Android
+  const femaleGoogleTokens = [
     '-iom', '-cwm', '-iob', '-tem', '-smc', '-hma', '-lma',
     '-dma', '-wmb', '-cmb', '-hmc', '-gma', '-emc', '-zmc'
   ];
-  if (maleGoogleTokens.some((t) => text.includes(t))) {
-    return 'male';
+  if (femaleGoogleTokens.some((t) => text.includes(t))) {
+    return 'female';
   }
 
   // 3. Known TTS voice names (Windows SAPI, iOS AVFoundation, Android TTS packages):

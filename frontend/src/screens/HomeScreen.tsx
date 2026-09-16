@@ -20,8 +20,9 @@ import { getMedicineStockInfo } from '../utils/stockUtils';
 import { getLocalTodayIso } from '../utils/dateUtils';
 import { scheduleSnooze, cancelMedicineNotification } from '../services/notificationService';
 
-// Original CareMeds Companion Illustration
+// Original Companion Illustration and App Logo
 const COMPANION_IMAGE = require('../../assets/caremeds_companion.jpg');
+const APP_LOGO = require('../../assets/app_logo.png');
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
@@ -115,10 +116,8 @@ export default function HomeScreen() {
       {/* Top App Bar */}
       <View style={styles.topBar}>
         <View style={styles.appTitleRow}>
-          <View style={styles.logoIcon}>
-            <Ionicons name="medkit" size={20} color="#FFFFFF" />
-          </View>
-          <Text style={styles.appTitle}>CareMeds</Text>
+          <Image source={APP_LOGO} style={styles.appLogoImage} resizeMode="contain" />
+          <Text style={styles.appTitle}>Pill Me On Time</Text>
         </View>
 
         <TouchableOpacity
@@ -490,13 +489,10 @@ function createStyles(colors: any, isDarkMode: boolean) {
       alignItems: 'center',
       gap: 10,
     },
-    logoIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 10,
-      backgroundColor: colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
+    appLogoImage: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
     },
     appTitle: {
       fontSize: 21,

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CareMeds",
+    "name": "Pill Me On Time",
     "slug": "caremeds",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,7 +10,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#006874"
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.caremeds.app",
       "permissions": [
@@ -23,7 +23,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#006874"
+      "backgroundColor": "#FFFFFF"
     },
     "plugins": [
       "expo-font"
