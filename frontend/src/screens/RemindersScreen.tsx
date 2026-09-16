@@ -116,11 +116,35 @@ export default function RemindersScreen() {
         `Rescheduled ${med.name} for ${settings.snoozeMinutes} min (rings at ${timeStr}). Stock is unchanged.`
       );
     } else if (status === 'TAKEN') {
+      // Prevent duplicate stock decrease if already taken today
+      const currentLog = logs.find(
+        (l: AdherenceLog) => l.medicineId === med.id && l.dateString === todayIso && l.status === 'TAKEN'
+      );
+      if (currentLog) {
+        const timeStr = currentLog.actionTimestamp
+          ? new Date(currentLog.actionTimestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+          : med.reminderTime;
+        Alert.alert(
+          'Dose Already Taken',
+          `This dose was already marked as Taken at ${timeStr}.\n\nPill Me On Time ensures stock is deducted only once per scheduled dose.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       await cancelMedicineNotification(med.id);
       await logAdherence(med.id, med.name, med.dosage, med.reminderTime, todayIso, 'TAKEN');
       if (settings.voiceRemindersEnabled) {
         speakTakenConfirmation(med.name, settings.voiceLanguage || 'en-US');
       }
+    } else if (status === 'NOT_SURE') {
+      await cancelMedicineNotification(med.id);
+      await logAdherence(med.id, med.name, med.dosage, med.reminderTime, todayIso, 'NOT_SURE');
+      Alert.alert(
+        'Marked as Not Sure',
+        'You marked this dose as Not Sure. Pill Me On Time cannot verify whether you took the medicine.\n\nCheck your medication instructions or contact your pharmacist/healthcare professional if you are unsure what to do.',
+        [{ text: 'Understood' }]
+      );
     } else if (status === 'SKIPPED') {
       await cancelMedicineNotification(med.id);
       await logAdherence(med.id, med.name, med.dosage, med.reminderTime, todayIso, 'SKIPPED');
@@ -367,6 +391,7 @@ export default function RemindersScreen() {
           medicines.map((med) => {
             const status = logsForTodayMap.get(med.id);
             const isTaken = status === 'TAKEN';
+            const isNotSure = status === 'NOT_SURE';
             const isSkipped = status === 'SKIPPED';
             const activeSnooze = activeSnoozeMap.get(med.id);
             const isSnoozed = !!activeSnooze;
@@ -393,6 +418,8 @@ export default function RemindersScreen() {
                     {
                       backgroundColor: isTaken
                         ? colors.takenGreen
+                        : isNotSure
+                        ? (colors.notSureAmber || '#D97706')
                         : isSnoozed
                         ? colors.warningAmber
                         : colors.primary,
@@ -456,52 +483,157 @@ export default function RemindersScreen() {
                       <Text style={styles.expiredNoticeText}>Medicine expired. Do not take.</Text>
                     </View>
                   ) : isTaken ? (
-                    <View style={styles.takenBadge}>
+                    <TouchableOpacity
+                      style={styles.takenBadge}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        const log = logs.find((l: AdherenceLog) => l.medicineId === med.id && l.dateString === todayIso && l.status === 'TAKEN');
+                        const timeStr = log?.actionTimestamp
+                          ? new Date(log.actionTimestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                          : med.reminderTime;
+                        Alert.alert(
+                          'Dose Already Taken',
+                          `This dose was already marked as Taken at ${timeStr}.\n\nPill Me On Time ensures stock is deducted only once.`,
+                          [{ text: 'OK' }]
+                        );
+                      }}
+                    >
                       <Ionicons name="checkmark-circle" size={16} color={colors.takenGreen} />
-                      <Text style={styles.takenBadgeText}>Taken today</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity
-                        style={styles.actionBtnTaken}
-                        onPress={() => handleAction(med, 'TAKEN')}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                        <Text style={styles.actionBtnText}>Taken</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
+                      <Text style={styles.takenBadgeText}>
+                        {(() => {
+                          const log = logs.find((l: AdherenceLog) => l.medicineId === med.id && l.dateString === todayIso && l.status === 'TAKEN');
+                          return log?.actionTimestamp
+                            ? `Taken at ${new Date(log.actionTimestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                            : 'Taken today';
+                        })()}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : isNotSure ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.notSureBadge,
+                        { backgroundColor: colors.notSureContainer || '#FEF3C7' },
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        Alert.alert(
+                          'Marked as Not Sure',
+                          'You marked this dose as Not Sure. Pill Me On Time cannot verify whether you took the medicine.\n\nCheck your medication instructions or contact your pharmacist/healthcare professional if you are unsure what to do.',
+                          [
+                            { text: 'Keep as Not Sure', style: 'cancel' },
+                            { text: 'Mark as Taken', onPress: () => handleAction(med, 'TAKEN') },
+                            { text: 'Mark as Not Taken', onPress: () => handleAction(med, 'SKIPPED') },
+                          ]
+                        );
+                      }}
+                    >
+                      <Ionicons name="help-circle" size={16} color={colors.notSureAmber || '#D97706'} />
+                      <Text
                         style={[
-                          styles.actionBtnSecondary,
-                          isSnoozed && { backgroundColor: colors.warningAmberContainer },
+                          styles.notSureBadgeText,
+                          { color: colors.notSureText || '#92400E' },
                         ]}
-                        onPress={() => handleAction(med, 'SNOOZED')}
-                        activeOpacity={0.85}
                       >
-                        <Ionicons
-                          name="alarm-outline"
-                          size={16}
-                          color={isSnoozed ? colors.warningAmber : colors.primary}
-                        />
-                        <Text
-                          style={[
-                            styles.actionBtnSecondaryText,
-                            isSnoozed && { color: colors.warningAmber, fontWeight: '700' },
-                          ]}
+                        Marked as Not Sure (Tap for info)
+                      </Text>
+                    </TouchableOpacity>
+                  ) : isSkipped ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.skippedBadge,
+                        { backgroundColor: isDarkMode ? colors.surfaceWarm : '#EDF2F4' },
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        Alert.alert(
+                          'Dose Not Taken',
+                          'This dose was recorded as Not Taken. Medicine stock was not deducted.',
+                          [
+                            { text: 'Keep as Not Taken', style: 'cancel' },
+                            { text: 'Change to Taken', onPress: () => handleAction(med, 'TAKEN') },
+                          ]
+                        );
+                      }}
+                    >
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.skippedBadgeText, { color: colors.textSecondary }]}>
+                        Not Taken (Stock unchanged)
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.actionGrid}>
+                      {/* Row 1: Taken | Snooze */}
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={styles.actionBtnTaken}
+                          onPress={() => handleAction(med, 'TAKEN')}
+                          activeOpacity={0.85}
                         >
-                          Snooze ({settings.snoozeMinutes}m)
-                        </Text>
-                      </TouchableOpacity>
+                          <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                          <Text style={styles.actionBtnText}>Taken</Text>
+                        </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={[styles.actionBtnSecondary, isSkipped && styles.actionBtnActive]}
-                        onPress={() => handleAction(med, 'SKIPPED')}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons name="close" size={16} color={colors.textSecondary} />
-                        <Text style={styles.actionBtnSecondaryText}>Skip</Text>
-                      </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.actionBtnSecondary,
+                            isSnoozed && { backgroundColor: colors.warningAmberContainer },
+                          ]}
+                          onPress={() => handleAction(med, 'SNOOZED')}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons
+                            name="alarm-outline"
+                            size={16}
+                            color={isSnoozed ? colors.warningAmber : colors.primary}
+                          />
+                          <Text
+                            style={[
+                              styles.actionBtnSecondaryText,
+                              isSnoozed && { color: colors.warningAmber, fontWeight: '700' },
+                            ]}
+                          >
+                            Snooze
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Row 2: Not Sure | Not Taken */}
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.actionBtnNotSure,
+                            {
+                              backgroundColor: colors.notSureContainer || '#FEF3C7',
+                              borderColor: colors.notSureAmber || '#D97706',
+                            },
+                          ]}
+                          onPress={() => handleAction(med, 'NOT_SURE')}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons
+                            name="help-circle-outline"
+                            size={16}
+                            color={colors.notSureAmber || '#D97706'}
+                          />
+                          <Text
+                            style={[
+                              styles.actionBtnNotSureText,
+                              { color: colors.notSureText || '#92400E' },
+                            ]}
+                          >
+                            Not Sure
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.actionBtnSecondary}
+                          onPress={() => handleAction(med, 'SKIPPED')}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="close" size={16} color={colors.textSecondary} />
+                          <Text style={styles.actionBtnSecondaryText}>Not Taken</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   )}
                 </View>
@@ -903,42 +1035,73 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textSecondary,
       marginBottom: 10,
     },
+    actionGrid: {
+      gap: 8,
+      marginTop: 4,
+    },
     actionRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      marginTop: 4,
     },
     actionBtnTaken: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
       backgroundColor: colors.takenGreen,
-      paddingHorizontal: 14,
-      paddingVertical: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
       borderRadius: 10,
-      gap: 4,
+      gap: 6,
+      minHeight: 44,
     },
     actionBtnSecondary: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
       backgroundColor: isDarkMode ? colors.surfaceWarm : '#F0F4F4',
+      paddingVertical: 10,
       paddingHorizontal: 12,
-      paddingVertical: 8,
       borderRadius: 10,
-      gap: 4,
+      gap: 6,
+      minHeight: 44,
+      borderWidth: 1,
+      borderColor: isDarkMode ? colors.border : '#E2E8F0',
     },
     actionBtnActive: {
       backgroundColor: colors.warningAmberContainer,
+      borderColor: colors.warningAmber,
     },
     actionBtnText: {
       color: '#FFFFFF',
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: '700',
     },
     actionBtnSecondaryText: {
       color: colors.textPrimary,
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: '600',
+    },
+    actionBtnNotSure: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDarkMode ? colors.surfaceWarm : '#FEF3C7',
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: isDarkMode ? '#B45309' : '#F59E0B',
+      gap: 6,
+      minHeight: 44,
+    },
+    actionBtnNotSureText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: isDarkMode ? '#FBBF24' : '#92400E',
     },
     takenBadge: {
       flexDirection: 'row',
@@ -954,6 +1117,32 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.takenGreen,
       fontSize: 13,
       fontWeight: '700',
+    },
+    notSureBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      alignSelf: 'flex-start',
+      gap: 6,
+    },
+    notSureBadgeText: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    skippedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      alignSelf: 'flex-start',
+      gap: 6,
+    },
+    skippedBadgeText: {
+      fontSize: 13,
+      fontWeight: '600',
     },
     expiredNotice: {
       flexDirection: 'row',

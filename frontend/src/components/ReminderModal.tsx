@@ -6,12 +6,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Medicine, AppSettings } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 import { scheduleSnooze, cancelMedicineNotification } from '../services/notificationService';
-import { logAdherence, getSettings } from '../storage/medicineStorage';
+import { logAdherence, getSettings, getDoseStatusToday } from '../storage/medicineStorage';
 import { speakTakenConfirmation } from '../utils/voiceReminder';
 import { getLocalTodayIso } from '../utils/dateUtils';
 
@@ -38,6 +39,7 @@ export default function ReminderModal({
   const [activeSettings, setActiveSettings] = useState<AppSettings | null>(propSettings || null);
   const [selectedSnoozeMin, setSelectedSnoozeMin] = useState<number>(propSettings?.snoozeMinutes || 5);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [existingTakenTime, setExistingTakenTime] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
@@ -50,7 +52,17 @@ export default function ReminderModal({
         setSelectedSnoozeMin(s.snoozeMinutes || 5);
       });
     }
-  }, [propSettings]);
+
+    if (medicine) {
+      getDoseStatusToday(medicine.id, medicine.reminderTime).then((res) => {
+        if (res.isTaken && res.formattedTime) {
+          setExistingTakenTime(res.formattedTime);
+        } else {
+          setExistingTakenTime(null);
+        }
+      });
+    }
+  }, [propSettings, medicine]);
 
   if (!medicine) return null;
 
@@ -58,6 +70,25 @@ export default function ReminderModal({
 
   const handleTaken = async () => {
     if (isProcessing) return;
+
+    // Prevent duplicate stock decrease if already recorded as taken
+    if (existingTakenTime) {
+      Alert.alert(
+        'Dose Already Taken',
+        `This dose was already marked as Taken at ${existingTakenTime}.\n\nPill Me On Time ensures stock is deducted only once.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              onDismiss();
+              onActionComplete?.();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -93,6 +124,71 @@ export default function ReminderModal({
     }
   };
 
+  const handleNotSure = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      // 1. Cancel notification so it doesn't ring again
+      await cancelMedicineNotification(medicine.id);
+
+      // 2. Log as NOT_SURE (0 stock deduction)
+      await logAdherence(
+        medicine.id,
+        medicine.name,
+        medicine.dosage,
+        medicine.reminderTime,
+        todayIso,
+        'NOT_SURE'
+      );
+
+      setIsProcessing(false);
+      onDismiss();
+      onActionComplete?.();
+
+      // 3. Display explicit safety guidance
+      Alert.alert(
+        'Marked as Not Sure',
+        'You marked this dose as Not Sure. Pill Me On Time cannot verify whether you took the medicine.\n\nCheck your medication instructions or contact your pharmacist/healthcare professional if you are unsure what to do.',
+        [{ text: 'Understood' }]
+      );
+    } catch (e) {
+      console.warn('handleNotSure error:', e);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleNotTaken = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    try {
+      // 1. Cancel notification
+      await cancelMedicineNotification(medicine.id);
+
+      // 2. Log as SKIPPED (zero stock reduction)
+      await logAdherence(
+        medicine.id,
+        medicine.name,
+        medicine.dosage,
+        medicine.reminderTime,
+        todayIso,
+        'SKIPPED'
+      );
+
+      setActionFeedback('Dose marked as Not Taken. Stock unchanged.');
+      setTimeout(() => {
+        setActionFeedback(null);
+        setIsProcessing(false);
+        onDismiss();
+        onActionComplete?.();
+      }, 1000);
+    } catch (e) {
+      console.warn('handleNotTaken error:', e);
+      setIsProcessing(false);
+    }
+  };
+
   const handleSnooze = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
@@ -115,37 +211,6 @@ export default function ReminderModal({
     }
   };
 
-  const handleSkip = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-
-    try {
-      // 1. Cancel notification
-      await cancelMedicineNotification(medicine.id);
-
-      // 2. Log as SKIPPED (zero stock reduction)
-      await logAdherence(
-        medicine.id,
-        medicine.name,
-        medicine.dosage,
-        medicine.reminderTime,
-        todayIso,
-        'SKIPPED'
-      );
-
-      setActionFeedback('Dose marked as Skipped. Stock unchanged.');
-      setTimeout(() => {
-        setActionFeedback(null);
-        setIsProcessing(false);
-        onDismiss();
-        onActionComplete?.();
-      }, 1000);
-    } catch (e) {
-      console.warn('handleSkip error:', e);
-      setIsProcessing(false);
-    }
-  };
-
   return (
     <Modal
       visible={visible}
@@ -158,28 +223,49 @@ export default function ReminderModal({
           {/* Header Bar */}
           <View style={styles.headerRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={[styles.bellIconCircle, { backgroundColor: colors.primaryContainer }]}>
+              <View
+                style={[
+                  styles.iconCircle,
+                  { backgroundColor: isSnoozed ? (colors.snoozeOrange || '#F97316') + '22' : colors.primaryContainer },
+                ]}
+              >
                 <Ionicons
-                  name={isSnoozed ? 'alarm' : 'notifications'}
+                  name={isSnoozed ? 'alarm-outline' : 'notifications'}
                   size={22}
-                  color={colors.primary}
+                  color={isSnoozed ? (colors.snoozeOrange || '#F97316') : colors.primary}
                 />
               </View>
               <View>
-                <Text style={[styles.headerCategory, { color: colors.primary }]}>
-                  {isSnoozed ? '⏰ SNOOZED REMINDER' : '💊 MEDICATION ALERT'}
+                <Text
+                  style={[
+                    styles.headerCategory,
+                    { color: isSnoozed ? (colors.snoozeOrange || '#F97316') : colors.primary },
+                  ]}
+                >
+                  {isSnoozed ? 'SNOOZED REMINDER' : 'TIME TO TAKE MEDICINE'}
                 </Text>
                 <Text style={[styles.headerSub, { color: colors.textSecondary }]}>
                   Scheduled: {medicine.reminderTime}
                 </Text>
               </View>
             </View>
+
             <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Ionicons name="close" size={24} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
-          {/* Medicine Card Content */}
+          {/* Already Taken Notice */}
+          {existingTakenTime ? (
+            <View style={[styles.alreadyTakenBanner, { backgroundColor: colors.takenGreenContainer || '#DCFCE7' }]}>
+              <Ionicons name="checkmark-circle" size={18} color={colors.takenGreen || '#16A34A'} />
+              <Text style={[styles.alreadyTakenText, { color: colors.takenGreen || '#16A34A' }]}>
+                This dose was already marked as Taken at {existingTakenTime}.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Medicine Details Card */}
           <View style={[styles.detailsBox, { backgroundColor: colors.surfaceWarm }]}>
             <Text style={[styles.medName, { color: colors.textPrimary }]}>{medicine.name}</Text>
             <Text style={[styles.medDose, { color: colors.primary }]}>
@@ -233,29 +319,58 @@ export default function ReminderModal({
             })}
           </View>
 
-          {/* Action Buttons */}
+          {/* Action Buttons: Taken, Not Taken, Not Sure, Snooze */}
           <View style={styles.actionButtonsCol}>
+            {/* 1. Primary Taken Button */}
             <TouchableOpacity
-              style={[styles.btnTake, { backgroundColor: colors.takenGreen }]}
+              style={[
+                styles.btnTake,
+                { backgroundColor: existingTakenTime ? colors.surfaceWarm : (colors.takenGreen || '#16A34A') },
+                existingTakenTime && { borderWidth: 1, borderColor: (colors.takenGreen || '#16A34A') },
+              ]}
               onPress={handleTaken}
               activeOpacity={0.85}
             >
-              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-              <Text style={styles.btnTakeText}>Take Now (Update Stock)</Text>
+              <Ionicons
+                name="checkmark-circle"
+                size={20}
+                color={existingTakenTime ? (colors.takenGreen || '#16A34A') : '#FFFFFF'}
+              />
+              <Text
+                style={[
+                  styles.btnTakeText,
+                  existingTakenTime && { color: (colors.takenGreen || '#16A34A') },
+                ]}
+              >
+                {existingTakenTime ? `Already Taken at ${existingTakenTime}` : 'Taken (Update Stock)'}
+              </Text>
             </TouchableOpacity>
 
+            {/* 2. Middle Row: Not Sure & Not Taken */}
             <View style={styles.secondaryRow}>
               <TouchableOpacity
                 style={[
                   styles.btnSecondary,
-                  { backgroundColor: colors.surfaceWarm, borderColor: colors.primary },
+                  {
+                    backgroundColor: colors.notSureContainer || '#FEF3C7',
+                    borderColor: colors.notSureAmber || '#D97706',
+                  },
                 ]}
-                onPress={handleSnooze}
+                onPress={handleNotSure}
                 activeOpacity={0.85}
               >
-                <Ionicons name="alarm-outline" size={18} color={colors.primary} />
-                <Text style={[styles.btnSecondaryText, { color: colors.primary }]}>
-                  Snooze ({selectedSnoozeMin}m)
+                <Ionicons
+                  name="help-circle-outline"
+                  size={18}
+                  color={colors.notSureAmber || '#D97706'}
+                />
+                <Text
+                  style={[
+                    styles.btnSecondaryText,
+                    { color: colors.notSureText || '#92400E' },
+                  ]}
+                >
+                  Not Sure
                 </Text>
               </TouchableOpacity>
 
@@ -264,15 +379,30 @@ export default function ReminderModal({
                   styles.btnSecondary,
                   { backgroundColor: colors.surfaceWarm, borderColor: colors.border },
                 ]}
-                onPress={handleSkip}
+                onPress={handleNotTaken}
                 activeOpacity={0.85}
               >
-                <Ionicons name="close" size={18} color={colors.textSecondary} />
+                <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
                 <Text style={[styles.btnSecondaryText, { color: colors.textSecondary }]}>
-                  Skip Dose
+                  Not Taken
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* 3. Snooze Button */}
+            <TouchableOpacity
+              style={[
+                styles.btnSnoozeFull,
+                { backgroundColor: colors.surfaceWarm, borderColor: colors.primary },
+              ]}
+              onPress={handleSnooze}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="alarm-outline" size={18} color={colors.primary} />
+              <Text style={[styles.btnSnoozeFullText, { color: colors.primary }]}>
+                Snooze ({selectedSnoozeMin}m)
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -409,5 +539,38 @@ const styles = StyleSheet.create({
   btnSecondaryText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  btnSnoozeFull: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  btnSnoozeFullText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  iconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  alreadyTakenBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 14,
+    gap: 8,
+  },
+  alreadyTakenText: {
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
   },
 });

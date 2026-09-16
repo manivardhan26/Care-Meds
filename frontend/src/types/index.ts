@@ -7,6 +7,7 @@ export interface Medicine {
   expiryDate: string; // e.g. "2027-12-31" or "12/2026"
   frequency: string; // e.g. "Once daily", "Twice daily"
   reminderTime: string; // e.g. "08:00 AM"
+  reminderTimes?: string[]; // e.g. ["08:00 AM", "06:00 PM"]
   timeOfDay: string; // "Morning" | "Noon" | "Evening" | "Night"
   imageUri?: string | null;
   supplyCount: number;
@@ -19,7 +20,7 @@ export interface Medicine {
   lowStockThreshold?: number;
 }
 
-export type AdherenceStatus = 'UPCOMING' | 'TAKEN' | 'MISSED' | 'SKIPPED' | 'SNOOZED';
+export type AdherenceStatus = 'UPCOMING' | 'TAKEN' | 'MISSED' | 'SKIPPED' | 'NOT_SURE' | 'SNOOZED';
 
 export interface AdherenceLog {
   id: string;

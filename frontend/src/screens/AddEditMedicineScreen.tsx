@@ -18,6 +18,7 @@ import { getMedicines, saveMedicine } from '../storage/medicineStorage';
 import { getMedicineStockInfo } from '../utils/stockUtils';
 import { getLocalTodayIso } from '../utils/dateUtils';
 import { evaluateExpiry } from '../utils/expirySafety';
+import { scheduleMedicineNotifications } from '../services/notificationService';
 
 const ROUTES = ['Oral', 'Topical', 'Inhalation', 'Drops', 'Injection'];
 const FREQUENCIES = ['Once a day', 'Twice a day', 'Three times a day', 'As needed', 'Weekly'];
@@ -28,6 +29,22 @@ const TIME_PRESETS = [
   { label: 'Evening', time: '06:00 PM' },
   { label: 'Night', time: '09:00 PM' },
 ];
+
+function getTargetDoseCount(freq: string): number {
+  switch (freq) {
+    case 'Once a day':
+      return 1;
+    case 'Twice a day':
+      return 2;
+    case 'Three times a day':
+      return 3;
+    case 'Weekly':
+      return 1;
+    case 'As needed':
+    default:
+      return 1;
+  }
+}
 
 export default function AddEditMedicineScreen() {
   const navigation = useNavigation<any>();
@@ -40,13 +57,76 @@ export default function AddEditMedicineScreen() {
   const [name, setName] = useState(initialValues?.name || '');
   const [dosage, setDosage] = useState(initialValues?.dosage || '');
   const [howToUse, setHowToUse] = useState('Oral');
-  const [frequency, setFrequency] = useState('Once a day');
-  const [reminderTime, setReminderTime] = useState('08:00 AM');
+  const [frequency, setFrequency] = useState(initialValues?.frequency || 'Once a day');
+
+  // Multi-reminder times state
+  const getInitialTimes = (): string[] => {
+    if (initialValues?.reminderTimes && Array.isArray(initialValues.reminderTimes) && initialValues.reminderTimes.length > 0) {
+      return initialValues.reminderTimes;
+    }
+    if (initialValues?.reminderTime) {
+      const split = initialValues.reminderTime.split(',').map((s: string) => s.trim()).filter(Boolean);
+      if (split.length > 0) return split;
+    }
+    return ['08:00 AM'];
+  };
+
+  const [reminderTimes, setReminderTimes] = useState<string[]>(getInitialTimes);
   const [timeOfDay, setTimeOfDay] = useState('Morning');
   const [startDate, setStartDate] = useState(getLocalTodayIso());
   const [expiryDate, setExpiryDate] = useState(initialValues?.expiryDate || '2027-12-31');
   const [instructions, setInstructions] = useState(initialValues?.instructions || '');
   const [imageUri, setImageUri] = useState<string | null>(initialValues?.imageUri || null);
+
+  // Synchronize dose count when frequency changes
+  const handleFrequencyChange = (newFreq: string) => {
+    setFrequency(newFreq);
+    const targetCount = getTargetDoseCount(newFreq);
+
+    if (targetCount === 1) {
+      setReminderTimes((prev) => {
+        const first = prev[0] || '08:00 AM';
+        return [first];
+      });
+    } else if (targetCount === 2) {
+      setReminderTimes((prev) => {
+        const first = prev[0] || '08:00 AM';
+        const second = prev.length >= 2 && prev[1] !== '02:00 PM' ? prev[1] : '06:00 PM';
+        return [first, second];
+      });
+    } else if (targetCount === 3) {
+      setReminderTimes((prev) => {
+        const first = prev[0] || '08:00 AM';
+        const second = prev.length >= 3 ? prev[1] : '02:00 PM';
+        const third = prev.length >= 3 ? prev[2] : '09:00 PM';
+        return [first, second, third];
+      });
+    }
+  };
+
+  const handleAddReminderTime = () => {
+    setReminderTimes((prev) => {
+      const defaults = ['08:00 AM', '12:00 PM', '06:00 PM', '09:00 PM', '10:00 PM', '07:00 AM'];
+      const nextTime = defaults.find((t) => !prev.includes(t)) || '08:00 AM';
+      return [...prev, nextTime];
+    });
+  };
+
+  const handleRemoveReminderTime = (index: number) => {
+    if (reminderTimes.length <= 1) {
+      Alert.alert('Required', 'At least one reminder time is required.');
+      return;
+    }
+    setReminderTimes((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateTime = (index: number, newTime: string) => {
+    setReminderTimes((prev) => {
+      const updated = [...prev];
+      updated[index] = newTime;
+      return updated;
+    });
+  };
 
   // Stock tracking state
   const [stockTrackingEnabled, setStockTrackingEnabled] = useState(
@@ -72,8 +152,18 @@ export default function AddEditMedicineScreen() {
           setName(found.name);
           setDosage(found.dosage);
           setFrequency(found.frequency);
-          setReminderTime(found.reminderTime);
-          setTimeOfDay(found.timeOfDay);
+
+          let times: string[] = [];
+          if (found.reminderTimes && Array.isArray(found.reminderTimes) && found.reminderTimes.length > 0) {
+            times = found.reminderTimes;
+          } else if (found.reminderTime) {
+            times = found.reminderTime.split(',').map((t) => t.trim()).filter(Boolean);
+          }
+          if (times.length === 0) {
+            times = ['08:00 AM'];
+          }
+          setReminderTimes(times);
+          setTimeOfDay(found.timeOfDay || 'Morning');
           setExpiryDate(found.expiryDate);
           setInstructions(found.instructions || found.notes);
           setImageUri(found.imageUri || null);
@@ -158,13 +248,26 @@ export default function AddEditMedicineScreen() {
     const parsedDose = parseInt(quantityPerDoseStr, 10);
     const dose = isNaN(parsedDose) ? 1 : Math.max(1, parsedDose);
 
-    await saveMedicine(
+    const validTimes = reminderTimes.map((t) => t.trim()).filter(Boolean);
+    const finalReminderTimes = validTimes.length > 0 ? validTimes : ['08:00 AM'];
+    const finalReminderTime = finalReminderTimes.join(', ');
+
+    let computedTimeOfDay = 'Morning';
+    if (finalReminderTimes.length > 1) {
+      computedTimeOfDay = 'Multiple';
+    } else {
+      const matched = TIME_PRESETS.find((p) => p.time.toUpperCase() === finalReminderTimes[0].toUpperCase());
+      computedTimeOfDay = matched?.label || 'Morning';
+    }
+
+    const saved = await saveMedicine(
       {
         name: name.trim(),
         dosage: dosage.trim() || '1 dose',
         frequency,
-        reminderTime,
-        timeOfDay,
+        reminderTime: finalReminderTime,
+        reminderTimes: finalReminderTimes,
+        timeOfDay: computedTimeOfDay,
         expiryDate: expiryDate.trim() || '2027-12-31',
         instructions: instructions.trim(),
         notes: instructions.trim(),
@@ -178,6 +281,9 @@ export default function AddEditMedicineScreen() {
       },
       existingMedicineId
     );
+
+    // Explicitly schedule notifications for all selected reminder times
+    await scheduleMedicineNotifications(saved);
 
     navigation.goBack();
   };
@@ -290,13 +396,16 @@ export default function AddEditMedicineScreen() {
 
         {/* Frequency */}
         <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>Frequency</Text>
+          <View style={styles.labelWithSubRow}>
+            <Text style={styles.fieldLabel}>Frequency</Text>
+            <Text style={styles.fieldSubLabel}>How many times per day</Text>
+          </View>
           <View style={styles.chipRow}>
             {FREQUENCIES.map((f) => (
               <TouchableOpacity
                 key={f}
                 style={[styles.smallChip, frequency === f && styles.smallChipActive]}
-                onPress={() => setFrequency(f)}
+                onPress={() => handleFrequencyChange(f)}
               >
                 <Text style={[styles.smallChipText, frequency === f && styles.smallChipTextActive]}>
                   {f}
@@ -306,33 +415,94 @@ export default function AddEditMedicineScreen() {
           </View>
         </View>
 
-        {/* Reminder Time */}
+        {/* Reminder Times */}
         <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>Reminder Time</Text>
-          <View style={styles.timePresetsRow}>
-            {TIME_PRESETS.map((preset) => (
-              <TouchableOpacity
-                key={preset.time}
-                style={[styles.timeChip, reminderTime === preset.time && styles.smallChipActive]}
-                onPress={() => {
-                  setReminderTime(preset.time);
-                  setTimeOfDay(preset.label);
-                }}
-              >
-                <Ionicons name="time-outline" size={14} color={reminderTime === preset.time ? '#FFFFFF' : colors.textSecondary} />
-                <Text style={[styles.timeChipText, reminderTime === preset.time && styles.smallChipTextActive]}>
-                  {preset.label} ({preset.time})
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.labelWithSubRow}>
+            <Text style={styles.fieldLabel}>Reminder Times</Text>
+            <Text style={styles.fieldSubLabel}>
+              {reminderTimes.length} {reminderTimes.length === 1 ? 'dose time scheduled' : 'dose times scheduled'}
+            </Text>
           </View>
-          <TextInput
-            style={[styles.input, { marginTop: 8 }]}
-            placeholder="Custom Time (e.g. 08:30 AM)"
-            placeholderTextColor={colors.textMuted}
-            value={reminderTime}
-            onChangeText={setReminderTime}
-          />
+
+          {/* Clean Vertical List of Dose Cards */}
+          <View style={styles.doseTimesList}>
+            {reminderTimes.map((timeVal, index) => {
+              return (
+                <View key={index} style={styles.doseCard}>
+                  {/* Dose Card Header: Dose Number + Selected Time Badge + Optional Remove */}
+                  <View style={styles.doseCardHeader}>
+                    <View style={styles.doseNumberBadge}>
+                      <Text style={styles.doseNumberText}>Dose {index + 1}</Text>
+                    </View>
+
+                    <View style={styles.selectedTimeDisplay}>
+                      <Ionicons name="time" size={16} color={isDarkMode ? colors.accentTeal : colors.primary} />
+                      <Text style={styles.selectedTimeText}>{timeVal}</Text>
+                    </View>
+
+                    {reminderTimes.length > 1 ? (
+                      <TouchableOpacity
+                        style={styles.removeTimeBtn}
+                        onPress={() => handleRemoveReminderTime(index)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color={colors.alertRed || '#DC2626'} />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={{ width: 24 }} />
+                    )}
+                  </View>
+
+                  {/* Preset Choices: Morning, Noon, Evening, Night (clean wrapping chips) */}
+                  <Text style={styles.presetSectionTitle}>Choose preset time:</Text>
+                  <View style={styles.presetChipsWrap}>
+                    {TIME_PRESETS.map((preset) => {
+                      const isSelected = timeVal.trim().toUpperCase() === preset.time.toUpperCase();
+                      return (
+                        <TouchableOpacity
+                          key={preset.label}
+                          style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                          onPress={() => handleUpdateTime(index, preset.time)}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons
+                            name="time-outline"
+                            size={14}
+                            color={isSelected ? '#FFFFFF' : colors.textSecondary}
+                          />
+                          <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                            {preset.label} ({preset.time})
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Custom Time Input */}
+                  <View style={styles.customTimeRow}>
+                    <Text style={styles.customTimeLabel}>Or custom time:</Text>
+                    <TextInput
+                      style={styles.customTimeInput}
+                      placeholder="e.g. 08:30 AM"
+                      placeholderTextColor={colors.textMuted}
+                      value={timeVal}
+                      onChangeText={(txt) => handleUpdateTime(index, txt)}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* + Add Time Button */}
+          <TouchableOpacity
+            style={styles.addTimeButton}
+            onPress={handleAddReminderTime}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={isDarkMode ? colors.accentTeal : colors.primary} />
+            <Text style={styles.addTimeButtonText}>+ Add reminder time</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Dates Row: Start Date + Expiry Date */}
@@ -611,27 +781,139 @@ function createStyles(colors: any, isDarkMode: boolean) {
     smallChipTextActive: {
       color: '#FFFFFF',
     },
-    timePresetsRow: {
+    labelWithSubRow: {
       flexDirection: 'row',
-      gap: 8,
-      marginBottom: 16,
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      marginBottom: 6,
     },
-    timeChip: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 8,
-      borderRadius: 8,
-      backgroundColor: isDarkMode ? colors.surfaceCard : colors.surfaceWarm,
+    fieldSubLabel: {
+      fontSize: 12,
+      fontWeight: '500',
+      color: colors.textMuted,
+    },
+    doseTimesList: {
+      gap: 12,
+      marginBottom: 8,
+    },
+    doseCard: {
+      backgroundColor: isDarkMode ? colors.surfaceWarm : '#F8FAFC',
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
-      gap: 4,
+      padding: 14,
     },
-    timeChipText: {
+    doseCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    doseNumberBadge: {
+      backgroundColor: isDarkMode ? colors.surfaceCard : colors.primaryContainer,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    doseNumberText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: isDarkMode ? colors.accentTeal : colors.primary,
+    },
+    selectedTimeDisplay: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: isDarkMode ? colors.surfaceCard : '#FFFFFF',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    selectedTimeText: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: colors.textPrimary,
+    },
+    removeTimeBtn: {
+      padding: 6,
+    },
+    presetSectionTitle: {
       fontSize: 12,
       fontWeight: '600',
       color: colors.textSecondary,
+      marginBottom: 6,
+    },
+    presetChipsWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 10,
+    },
+    presetChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: isDarkMode ? colors.surfaceCard : '#FFFFFF',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    presetChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    presetChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    presetChipTextActive: {
+      color: '#FFFFFF',
+      fontWeight: '700',
+    },
+    customTimeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 2,
+    },
+    customTimeLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    customTimeInput: {
+      flex: 1,
+      backgroundColor: colors.inputBackground,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      fontSize: 13,
+      color: colors.textPrimary,
+    },
+    addTimeButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: colors.primary,
+      backgroundColor: isDarkMode ? colors.surfaceWarm : '#F0FDFA',
+      marginTop: 4,
+    },
+    addTimeButtonText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: isDarkMode ? colors.accentTeal : colors.primary,
     },
     stockCard: {
       backgroundColor: colors.cardBackground,

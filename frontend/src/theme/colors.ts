@@ -30,6 +30,9 @@ export const LightColors = {
   snoozeOrange: '#D97706',
   skippedGray: '#5F6368',
   missedRed: '#BA1A1A',
+  notSureAmber: '#D97706',
+  notSureContainer: '#FEF3C7',
+  notSureText: '#92400E',
 
   // Surfaces & Backgrounds
   background: '#FBF9F5',
@@ -105,6 +108,9 @@ export const DarkColors: typeof LightColors = {
   snoozeOrange: '#FBBF24',
   skippedGray: '#8F999A',
   missedRed: '#FF897D',
+  notSureAmber: '#FBBF24',
+  notSureContainer: '#451A03',
+  notSureText: '#FDE68A',
 
   // Surfaces & Backgrounds (Accessible, calm healthcare dark slate)
   background: '#12181A',

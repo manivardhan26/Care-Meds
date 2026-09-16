@@ -1,4 +1,4 @@
-export type AdherenceStatus = 'UPCOMING' | 'TAKEN' | 'MISSED' | 'SKIPPED' | 'SNOOZED';
+export type AdherenceStatus = 'UPCOMING' | 'TAKEN' | 'MISSED' | 'SKIPPED' | 'NOT_SURE' | 'SNOOZED';
 
 export type TimeOfDay = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
@@ -11,6 +11,7 @@ export interface Medicine {
   expiryDate: string; // YYYY-MM-DD
   frequency: string;
   reminderTime: string; // e.g. "08:00 AM"
+  reminderTimes?: string[];
   timeOfDay: TimeOfDay;
   imageUri?: string | null;
   supplyCount: number;

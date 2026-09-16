@@ -95,7 +95,7 @@ export default function SettingsScreen() {
   };
 
   const handleOpenEditProfile = () => {
-    setProfileNameInput(settings.patientName?.trim() || 'Pill Me On Time Patient');
+    setProfileNameInput(settings.patientName?.trim() || '');
     setProfileAgeInput(settings.patientAge?.trim() || '');
     setIsEditProfileOpen(true);
   };
@@ -107,7 +107,7 @@ export default function SettingsScreen() {
   const handleSaveProfile = async () => {
     const trimmedName = profileNameInput.trim();
     if (!trimmedName) {
-      Alert.alert('Missing Name', 'Please enter a patient name, or use "Pill Me On Time Patient".');
+      Alert.alert('Missing Name', 'Please enter your name.');
       return;
     }
 
@@ -267,7 +267,7 @@ export default function SettingsScreen() {
           <View style={styles.profileInfoCol}>
             <View style={styles.profileNameRow}>
               <Text style={styles.profileName} numberOfLines={1}>
-                {settings.patientName?.trim() || 'Pill Me On Time Patient'}
+                {settings.patientName?.trim() || 'Your Name'}
               </Text>
               {Boolean(settings.patientAge?.trim()) && (
                 <View style={styles.ageBadge}>
@@ -275,7 +275,7 @@ export default function SettingsScreen() {
                 </View>
               )}
             </View>
-            <Text style={styles.profileSubtitle}>Senior Medication Companion</Text>
+            <Text style={styles.profileSubtitle}>Your medication companion</Text>
             <TouchableOpacity
               style={styles.editProfileBtn}
               onPress={handleOpenEditProfile}
@@ -337,7 +337,7 @@ export default function SettingsScreen() {
               <Text style={styles.rowSubtitle}>
                 {isDarkMode
                   ? 'High-contrast dark slate enabled'
-                  : 'Clean healthcare light enabled'}
+                  : 'Clean light theme enabled'}
               </Text>
             </View>
             <Switch
@@ -621,7 +621,7 @@ export default function SettingsScreen() {
             onPress={() =>
               Alert.alert(
                 'About Pill Me On Time',
-                'Pill Me On Time v1.0.0\nA caring, high-contrast, elderly-friendly medication manager with clear voice reminders.'
+                'Pill Me On Time v1.0.0\nA modern, reliable personal medication manager with clear voice reminders.'
               )
             }
             activeOpacity={0.7}
@@ -676,16 +676,16 @@ export default function SettingsScreen() {
             </View>
 
             <Text style={styles.modalSubtitle}>
-              Personalize your name and optional age for your Pill Me On Time companion.
+              Set up your personal details for Pill Me On Time.
             </Text>
 
-            {/* Patient Name Input */}
-            <Text style={styles.modalFieldLabel}>Patient Name</Text>
+            {/* Your Name Input */}
+            <Text style={styles.modalFieldLabel}>Your Name</Text>
             <TextInput
               style={styles.modalInput}
               value={profileNameInput}
               onChangeText={setProfileNameInput}
-              placeholder="e.g. Eleanor Vance"
+              placeholder="e.g. Alex Morgan"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="words"
               maxLength={50}
@@ -697,13 +697,13 @@ export default function SettingsScreen() {
               style={styles.modalInput}
               value={profileAgeInput}
               onChangeText={setProfileAgeInput}
-              placeholder="e.g. 74"
+              placeholder="e.g. 25"
               placeholderTextColor={colors.textMuted}
               keyboardType="numeric"
               maxLength={3}
             />
             <Text style={styles.modalHelpText}>
-              Age is optional and stored only on this device.
+              Your information is stored only on this device.
             </Text>
 
             {/* Action Buttons: Cancel and Save */}

@@ -14,6 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { saveMedicine } from '../storage/medicineStorage';
+import { scheduleMedicineNotifications } from '../services/notificationService';
+
+const TIME_PRESETS = [
+  { label: 'Morning', time: '08:00 AM' },
+  { label: 'Noon', time: '12:00 PM' },
+  { label: 'Evening', time: '06:00 PM' },
+  { label: 'Night', time: '09:00 PM' },
+];
 
 export default function ScanReviewScreen() {
   const navigation = useNavigation<any>();
@@ -25,27 +33,40 @@ export default function ScanReviewScreen() {
   const [name, setName] = useState(extracted.name || '');
   const [dosage, setDosage] = useState(extracted.dosage || '');
   const [instructions, setInstructions] = useState(extracted.instructions || '');
+
+  // Safety rule: track if expiry was detected from OCR
+  const isExpiryDetected = extracted.isExpiryDetected || Boolean(extracted.expiryDate);
   const [expiryDate, setExpiryDate] = useState(extracted.expiryDate || '');
+  const [expiryConfirmed, setExpiryConfirmed] = useState(false);
+
+  // Suggested reminder time based on instructions (e.g. morning -> 08:00 AM)
+  const defaultSuggestedTime = extracted.suggestedReminderTime || '08:00 AM';
+  const [reminderTime, setReminderTime] = useState(defaultSuggestedTime);
+  const [frequency, setFrequency] = useState(
+    (extracted.instructions || '').toLowerCase().includes('twice')
+      ? 'Twice a day'
+      : (extracted.instructions || '').toLowerCase().includes('three')
+      ? 'Three times a day'
+      : 'Once a day'
+  );
+
   const [supplyCountStr, setSupplyCountStr] = useState(extracted.supplyCount?.toString() || '30');
   const [imageUri] = useState<string | null>(extracted.imageUri || null);
 
-  const handleConfirmSave = async () => {
-    if (!name.trim()) {
-      Alert.alert('Missing Field', 'Please enter a medicine name.');
-      return;
-    }
-
+  const doSave = async (finalExpiry: string) => {
     const supply = parseInt(supplyCountStr, 10) || 30;
 
-    await saveMedicine({
+    const saved = await saveMedicine({
       name: name.trim(),
       dosage: dosage.trim() || '1 dose',
       instructions: instructions.trim(),
       notes: instructions.trim(),
-      expiryDate: expiryDate.trim() || '2027-12-31',
-      frequency: 'Once daily',
-      reminderTime: '08:00 AM',
-      timeOfDay: 'Morning',
+      // Safety rule: never invent a date if not provided
+      expiryDate: finalExpiry.trim(),
+      frequency,
+      reminderTime,
+      reminderTimes: [reminderTime],
+      timeOfDay: reminderTime.includes('AM') ? 'Morning' : 'Evening',
       imageUri: imageUri || null,
       supplyCount: supply,
       stockTrackingEnabled: true,
@@ -55,8 +76,38 @@ export default function ScanReviewScreen() {
       lowStockThreshold: 3,
     });
 
-    // Navigate to Home tab in root navigator
+    await scheduleMedicineNotifications(saved);
     navigation.navigate('MainTabs', { screen: 'Home' });
+  };
+
+  const handleConfirmSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Missing Field', 'Please enter a medicine name.');
+      return;
+    }
+
+    const trimmedExpiry = expiryDate.trim();
+
+    // Safety rule: Require user to confirm detected expiry before saving
+    if (trimmedExpiry && isExpiryDetected && !expiryConfirmed) {
+      Alert.alert(
+        'Verify Expiry Date',
+        `Detected expiry date: ${trimmedExpiry}\n\nPlease check the physical medicine packaging to ensure this date is accurate before saving.`,
+        [
+          { text: 'Edit Date', style: 'cancel' },
+          {
+            text: 'Confirm & Save',
+            onPress: () => {
+              setExpiryConfirmed(true);
+              doSave(trimmedExpiry);
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    await doSave(trimmedExpiry);
   };
 
   const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
@@ -113,14 +164,77 @@ export default function ScanReviewScreen() {
           />
         </View>
 
+        {/* Reminder Time (Suggested preset - user can review and change) */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Expiry Date (YYYY-MM-DD or MM/YYYY)</Text>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Reminder Time</Text>
+            <Text style={styles.subLabel}>Suggested based on instructions</Text>
+          </View>
+          <View style={styles.presetWrap}>
+            {TIME_PRESETS.map((p) => {
+              const isSelected = reminderTime === p.time;
+              return (
+                <TouchableOpacity
+                  key={p.label}
+                  style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                  onPress={() => setReminderTime(p.time)}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={14}
+                    color={isSelected ? '#FFFFFF' : colors.textSecondary}
+                  />
+                  <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                    {p.label} ({p.time})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TextInput
+            style={[styles.input, { marginTop: 6 }]}
+            placeholder="Custom Time (e.g. 08:30 AM)"
+            placeholderTextColor={colors.textMuted}
+            value={reminderTime}
+            onChangeText={setReminderTime}
+          />
+        </View>
+
+        {/* Expiry Date with Safety Indicator */}
+        <View style={styles.inputGroup}>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Expiry Date (YYYY-MM-DD or MM/YYYY)</Text>
+            {isExpiryDetected ? (
+              <View style={styles.detectedBadge}>
+                <Ionicons name="checkmark-circle" size={12} color="#16A34A" />
+                <Text style={styles.detectedBadgeText}>Detected by OCR</Text>
+              </View>
+            ) : (
+              <View style={styles.unclearBadge}>
+                <Ionicons name="information-circle" size={12} color={colors.warningAmber || '#D97706'} />
+                <Text style={styles.unclearBadgeText}>Not detected</Text>
+              </View>
+            )}
+          </View>
           <TextInput
             style={styles.input}
+            placeholder={isExpiryDetected ? 'YYYY-MM-DD' : 'Leave blank or enter manually if known'}
             placeholderTextColor={colors.textMuted}
             value={expiryDate}
-            onChangeText={setExpiryDate}
+            onChangeText={(txt) => {
+              setExpiryDate(txt);
+              setExpiryConfirmed(false);
+            }}
           />
+          {isExpiryDetected ? (
+            <Text style={styles.expiryNotice}>
+              ⚠️ Detected from packaging. Please inspect the box and verify this date.
+            </Text>
+          ) : (
+            <Text style={styles.expiryNoticeMuted}>
+              No expiry date was detected on packaging. Please enter it manually if known.
+            </Text>
+          )}
         </View>
 
         <View style={styles.inputGroup}>
@@ -262,5 +376,84 @@ const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
       color: colors.textPrimary,
       fontSize: 16,
       fontWeight: '600',
+    },
+    labelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    subLabel: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontStyle: 'italic',
+    },
+    presetWrap: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 8,
+    },
+    presetChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 20,
+      backgroundColor: colors.surfaceWarm,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    presetChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    presetChipText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    presetChipTextActive: {
+      color: '#FFFFFF',
+    },
+    detectedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDarkMode ? '#052e16' : '#DCFCE7',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 12,
+    },
+    detectedBadgeText: {
+      fontSize: 11,
+      fontWeight: 'bold',
+      color: isDarkMode ? '#4ADE80' : '#15803D',
+    },
+    unclearBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: isDarkMode ? '#451a03' : '#FEF3C7',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 12,
+    },
+    unclearBadgeText: {
+      fontSize: 11,
+      fontWeight: 'bold',
+      color: isDarkMode ? '#FBBF24' : '#B45309',
+    },
+    expiryNotice: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: isDarkMode ? '#FBBF24' : '#B45309',
+      marginTop: 4,
+    },
+    expiryNoticeMuted: {
+      fontSize: 12,
+      color: colors.textMuted,
+      marginTop: 4,
     },
   });

@@ -66,15 +66,42 @@ export class DeviceVoiceProvider implements VoiceProvider {
 
       speechOptions.onError = (error) => {
         if (this.activeSpeechToken === currentToken) {
+          // If a voice identifier caused native error on Android (e.g. getVoices null), retry with language only
+          if (speechOptions.voice) {
+            try {
+              const fallbackOptions = { ...speechOptions };
+              delete fallbackOptions.voice;
+              Speech.speak(text, fallbackOptions);
+              return;
+            } catch {}
+          }
           options?.onError?.(error);
         }
       };
 
-      Speech.speak(text, speechOptions);
-    } catch (error) {
-      console.warn('DeviceVoiceProvider speak error:', error);
-      if (options?.onError && error instanceof Error) {
-        options.onError(error);
+      try {
+        Speech.speak(text, speechOptions);
+      } catch (error) {
+        // If speaking with specific voiceId threw on Android, retry with language only
+        if (speechOptions.voice) {
+          try {
+            const fallbackOptions = { ...speechOptions };
+            delete fallbackOptions.voice;
+            Speech.speak(text, fallbackOptions);
+            return;
+          } catch (fallbackError) {
+            console.warn('DeviceVoiceProvider fallback speak error:', fallbackError);
+          }
+        }
+        console.warn('DeviceVoiceProvider speak error:', error);
+        if (options?.onError && error instanceof Error) {
+          options.onError(error);
+        }
+      }
+    } catch (outerError) {
+      console.warn('DeviceVoiceProvider speak setup error:', outerError);
+      if (options?.onError && outerError instanceof Error) {
+        options.onError(outerError);
       }
     }
   }

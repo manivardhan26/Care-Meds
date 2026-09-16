@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   isDarkMode: false,
   voiceLanguage: 'en-US',
   voiceGender: 'female',
-  patientName: 'Pill Me On Time Patient',
+  patientName: 'Your Name',
   patientAge: '',
 };
 

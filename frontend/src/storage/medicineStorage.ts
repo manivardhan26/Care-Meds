@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   isDarkMode: false,
   voiceLanguage: 'en-US',
   voiceGender: 'female',
-  patientName: 'Pill Me On Time Patient',
+  patientName: 'Your Name',
   patientAge: '',
 };
 
@@ -177,13 +177,27 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
     console.warn('AsyncStorage saveMedicine warning:', e);
   }
 
+  // Trigger notification callback to auto-schedule all reminder times
+  if (onSaveMedicineCallback) {
+    try {
+      await onSaveMedicineCallback(updatedMedicine);
+    } catch (e) {
+      console.warn('onSaveMedicineCallback error:', e);
+    }
+  }
+
   // Asynchronously sync with backend API
   saveMedicineApi(normalizedMedicine, existingId).catch(() => {});
 
   return updatedMedicine;
 }
 
+let onSaveMedicineCallback: ((medicine: Medicine) => void | Promise<void>) | null = null;
 let onDeleteMedicineCallback: ((id: string) => void | Promise<void>) | null = null;
+
+export function setOnSaveMedicineCallback(cb: (medicine: Medicine) => void | Promise<void>) {
+  onSaveMedicineCallback = cb;
+}
 
 export function setOnDeleteMedicineCallback(cb: (id: string) => void | Promise<void>) {
   onDeleteMedicineCallback = cb;
@@ -336,8 +350,8 @@ export async function logAdherence(
     }
   }
 
-  // Clear active snooze if medicine has been resolved (TAKEN or SKIPPED)
-  if (status === 'TAKEN' || status === 'SKIPPED') {
+  // Clear active snooze if medicine has been resolved (TAKEN, SKIPPED, or NOT_SURE)
+  if (status === 'TAKEN' || status === 'SKIPPED' || status === 'NOT_SURE') {
     await clearSnoozeRecord(medicineId);
   }
 
@@ -345,6 +359,45 @@ export async function logAdherence(
   logAdherenceApi(medicineId, medicineName, dosage, scheduledTime, dateString, status, notes).catch(() => {});
 
   return record;
+}
+
+/**
+ * Check if a scheduled dose was already logged today (e.g. TAKEN, NOT_SURE, SKIPPED)
+ * and retrieve exact formatted action time for duplicate dose warnings.
+ */
+export async function getDoseStatusToday(
+  medicineId: string,
+  scheduledTime?: string
+): Promise<{
+  isRecorded: boolean;
+  isTaken: boolean;
+  status?: AdherenceStatus;
+  actionTimestamp?: number;
+  formattedTime?: string;
+  record?: AdherenceLog;
+}> {
+  const today = new Date().toISOString().split('T')[0];
+  const logs = await getAdherenceLogs();
+  const log = logs.find(
+    (l) => l.medicineId === medicineId && l.dateString === today && (!scheduledTime || l.scheduledTime === scheduledTime)
+  );
+
+  if (!log) {
+    return { isRecorded: false, isTaken: false };
+  }
+
+  const formattedTime = log.actionTimestamp
+    ? new Date(log.actionTimestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : '';
+
+  return {
+    isRecorded: true,
+    isTaken: log.status === 'TAKEN',
+    status: log.status,
+    actionTimestamp: log.actionTimestamp,
+    formattedTime,
+    record: log,
+  };
 }
 
 export async function getActiveSnoozes(): Promise<SnoozeRecord[]> {
