@@ -324,7 +324,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textSecondary,
     },
     filterPillTextActive: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
     scrollContent: {
       padding: 16,
@@ -502,7 +502,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       gap: 8,
     },
     emptyAddBtnText: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
       fontSize: 15,
       fontWeight: '700',
     },

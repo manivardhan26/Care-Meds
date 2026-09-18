@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
 import { saveMedicine } from '../storage/medicineStorage';
@@ -39,7 +41,7 @@ export default function ScanReviewScreen() {
   const [expiryDate, setExpiryDate] = useState(extracted.expiryDate || '');
   const [expiryConfirmed, setExpiryConfirmed] = useState(false);
 
-  // Suggested reminder time based on instructions (e.g. morning -> 08:00 AM)
+  // Suggested reminder time
   const defaultSuggestedTime = extracted.suggestedReminderTime || '08:00 AM';
   const [reminderTime, setReminderTime] = useState(defaultSuggestedTime);
   const [frequency, setFrequency] = useState(
@@ -51,10 +53,59 @@ export default function ScanReviewScreen() {
   );
 
   const [supplyCountStr, setSupplyCountStr] = useState(extracted.supplyCount?.toString() || '30');
-  const [imageUri] = useState<string | null>(extracted.imageUri || null);
+  const [imageUri, setImageUri] = useState<string | null>(extracted.imageUri || null);
+
+  // Ref tracking whether the user confirmed and saved this photo
+  const isSavedRef = useRef(false);
+
+  // Clean up temporary photo if user navigates away or cancels without saving
+  useEffect(() => {
+    return () => {
+      if (!isSavedRef.current && imageUri) {
+        FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
+      }
+    };
+  }, [imageUri]);
+
+  const handleRetakePhoto = async () => {
+    try {
+      // 1. Delete previous temporary photo from cache
+      if (imageUri) {
+        await FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
+      }
+
+      // 2. Launch camera for a new photo
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Camera permission is required to retake photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.warn('Retake photo error:', e);
+      Alert.alert('Camera Error', 'Could not retake photo. Please try again.');
+    }
+  };
+
+  const handleCancel = async () => {
+    if (imageUri) {
+      await FileSystem.deleteAsync(imageUri, { idempotent: true }).catch(() => {});
+    }
+    navigation.goBack();
+  };
 
   const doSave = async (finalExpiry: string) => {
     const supply = parseInt(supplyCountStr, 10) || 30;
+    isSavedRef.current = true; // Mark as saved so temporary file cleanup does NOT delete it
 
     const saved = await saveMedicine({
       name: name.trim(),
@@ -115,7 +166,7 @@ export default function ScanReviewScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerBar}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backButton} onPress={handleCancel} accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Review & Confirm</Text>
@@ -123,12 +174,16 @@ export default function ScanReviewScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.reviewNotice}>
-          Please verify the extracted details below. You can tap any field to correct it before saving.
+          Please verify or fill in the details below. You can tap any field to edit before saving.
         </Text>
 
         {imageUri ? (
           <View style={styles.imagePreviewContainer}>
             <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="cover" />
+            <TouchableOpacity style={styles.retakeFloatingButton} onPress={handleRetakePhoto}>
+              <Ionicons name="camera-reverse" size={18} color="#FFFFFF" />
+              <Text style={styles.retakeFloatingText}>Retake Photo</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
 
@@ -136,6 +191,7 @@ export default function ScanReviewScreen() {
           <Text style={styles.label}>Medicine Name</Text>
           <TextInput
             style={[styles.input, styles.inputBold]}
+            placeholder="e.g. Paracetamol, Metformin"
             placeholderTextColor={colors.textMuted}
             value={name}
             onChangeText={setName}
@@ -143,9 +199,10 @@ export default function ScanReviewScreen() {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Dosage (e.g. 500mg)</Text>
+          <Text style={styles.label}>Dosage (e.g. 500mg, 10ml)</Text>
           <TextInput
             style={styles.input}
+            placeholder="e.g. 500mg"
             placeholderTextColor={colors.textMuted}
             value={dosage}
             onChangeText={setDosage}
@@ -156,6 +213,7 @@ export default function ScanReviewScreen() {
           <Text style={styles.label}>Instructions / Schedule</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
+            placeholder="e.g. Take 1 tablet after meals"
             placeholderTextColor={colors.textMuted}
             value={instructions}
             onChangeText={setInstructions}
@@ -164,11 +222,11 @@ export default function ScanReviewScreen() {
           />
         </View>
 
-        {/* Reminder Time (Suggested preset - user can review and change) */}
+        {/* Reminder Time */}
         <View style={styles.inputGroup}>
           <View style={styles.labelRow}>
             <Text style={styles.label}>Reminder Time</Text>
-            <Text style={styles.subLabel}>Suggested based on instructions</Text>
+            <Text style={styles.subLabel}>Tap a preset or type below</Text>
           </View>
           <View style={styles.presetWrap}>
             {TIME_PRESETS.map((p) => {
@@ -182,7 +240,7 @@ export default function ScanReviewScreen() {
                   <Ionicons
                     name="time-outline"
                     size={14}
-                    color={isSelected ? '#FFFFFF' : colors.textSecondary}
+                    color={isSelected ? colors.onPrimary : colors.textSecondary}
                   />
                   <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
                     {p.label} ({p.time})
@@ -218,7 +276,7 @@ export default function ScanReviewScreen() {
           </View>
           <TextInput
             style={styles.input}
-            placeholder={isExpiryDetected ? 'YYYY-MM-DD' : 'Leave blank or enter manually if known'}
+            placeholder="Leave blank or enter date if known"
             placeholderTextColor={colors.textMuted}
             value={expiryDate}
             onChangeText={(txt) => {
@@ -228,11 +286,11 @@ export default function ScanReviewScreen() {
           />
           {isExpiryDetected ? (
             <Text style={styles.expiryNotice}>
-              ⚠️ Detected from packaging. Please inspect the box and verify this date.
+              ⚠️ Detected from packaging. Please inspect the physical box and verify this date.
             </Text>
           ) : (
             <Text style={styles.expiryNoticeMuted}>
-              No expiry date was detected on packaging. Please enter it manually if known.
+              No expiry date was detected. Never guess an expiry date; check packaging or leave blank.
             </Text>
           )}
         </View>
@@ -249,18 +307,19 @@ export default function ScanReviewScreen() {
         </View>
 
         {/* Confirm & Save Button */}
-        <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmSave}>
-          <Ionicons name="checkmark-circle-outline" size={24} color={isDarkMode ? colors.onPrimary : '#FFF'} />
-          <Text style={styles.confirmButtonText}>Confirm & Save to Meds</Text>
+        <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmSave} activeOpacity={0.85}>
+          <Ionicons name="checkmark-circle-outline" size={24} color={colors.onPrimary} />
+          <Text style={styles.confirmButtonText}>Confirm & Save Medicine</Text>
         </TouchableOpacity>
 
-        {/* Retake Button */}
+        {/* Cancel / Retake Button */}
         <TouchableOpacity
-          style={styles.retakeButton}
-          onPress={() => navigation.goBack()}
+          style={styles.cancelButton}
+          onPress={handleCancel}
+          activeOpacity={0.85}
         >
-          <Ionicons name="refresh-outline" size={20} color={colors.textPrimary} />
-          <Text style={styles.retakeButtonText}>Scan Again / Pick Another</Text>
+          <Ionicons name="close-circle-outline" size={20} color={colors.textSecondary} />
+          <Text style={styles.cancelButtonText}>Cancel (Discard Photo)</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -303,6 +362,37 @@ const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
       lineHeight: 22,
       marginBottom: 20,
     },
+    imagePreviewContainer: {
+      borderRadius: 16,
+      overflow: 'hidden',
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      height: 180,
+      backgroundColor: colors.surfaceCard,
+      position: 'relative',
+    },
+    imagePreview: {
+      width: '100%',
+      height: '100%',
+    },
+    retakeFloatingButton: {
+      position: 'absolute',
+      bottom: 12,
+      right: 12,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    retakeFloatingText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '600',
+    },
     inputGroup: {
       marginBottom: 16,
     },
@@ -319,22 +409,22 @@ const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
       borderRadius: 14,
       height: 54,
       paddingHorizontal: 16,
-      fontSize: 18,
+      fontSize: 17,
       color: colors.textPrimary,
     },
     inputBold: {
       fontWeight: 'bold',
-      fontSize: 20,
+      fontSize: 19,
     },
     textArea: {
-      height: 80,
+      height: 74,
       paddingTop: 12,
       textAlignVertical: 'top',
     },
     confirmButton: {
       backgroundColor: colors.primary,
       borderRadius: 16,
-      height: 60,
+      height: 58,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -343,12 +433,12 @@ const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
       elevation: 3,
     },
     confirmButtonText: {
-      color: isDarkMode ? colors.onPrimary : '#FFF',
-      fontSize: 19,
+      color: colors.onPrimary,
+      fontSize: 18,
       fontWeight: 'bold',
     },
-    retakeButton: {
-      backgroundColor: colors.surface,
+    cancelButton: {
+      backgroundColor: colors.surfaceCard,
       borderWidth: 1.5,
       borderColor: colors.border,
       borderRadius: 16,
@@ -359,21 +449,8 @@ const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
       gap: 8,
       marginTop: 12,
     },
-    imagePreviewContainer: {
-      borderRadius: 16,
-      overflow: 'hidden',
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      height: 160,
-      backgroundColor: colors.surfaceCard,
-    },
-    imagePreview: {
-      width: '100%',
-      height: '100%',
-    },
-    retakeButtonText: {
-      color: colors.textPrimary,
+    cancelButtonText: {
+      color: colors.textSecondary,
       fontSize: 16,
       fontWeight: '600',
     },
@@ -415,7 +492,7 @@ const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
       color: colors.textSecondary,
     },
     presetChipTextActive: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
     detectedBadge: {
       flexDirection: 'row',

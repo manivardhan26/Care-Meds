@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme, DarkTheme, Theme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { initNotifications, addReminderTriggerListener } from './src/services/notificationService';
@@ -9,14 +10,37 @@ import { getMedicines } from './src/storage/medicineStorage';
 import ReminderModal from './src/components/ReminderModal';
 import { Medicine } from './src/types';
 
+// Prevent splash screen from auto-hiding before initialization is ready
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 function AppContent() {
   const { isDarkMode, colors } = useTheme();
   const [triggeredMed, setTriggeredMed] = useState<Medicine | null>(null);
   const [triggeredIsSnooze, setTriggeredIsSnooze] = useState(false);
 
   useEffect(() => {
-    // Re-arm stored notifications upon app startup
-    initNotifications().catch((e) => console.warn('initNotifications error:', e));
+    let isMounted = true;
+
+    // Safety fallback: guaranteed hide after 1000ms even if any initialization throws
+    const splashTimeout = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 1000);
+
+    async function startup() {
+      try {
+        // 1. Initialize native notifications & channels
+        await initNotifications();
+      } catch (e) {
+        console.warn('Startup notification initialization error:', e);
+      } finally {
+        clearTimeout(splashTimeout);
+        if (isMounted) {
+          await SplashScreen.hideAsync().catch(() => {});
+        }
+      }
+    }
+
+    startup();
 
     // Global in-app reminder trigger listener
     const unsubscribe = addReminderTriggerListener(async (item) => {
@@ -35,6 +59,8 @@ function AppContent() {
     });
 
     return () => {
+      isMounted = false;
+      clearTimeout(splashTimeout);
       unsubscribe();
     };
   }, []);

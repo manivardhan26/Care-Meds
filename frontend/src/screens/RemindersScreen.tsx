@@ -269,7 +269,7 @@ export default function RemindersScreen() {
                   <Text
                     style={[
                       styles.medChipText,
-                      { color: isSelected ? '#FFFFFF' : colors.textPrimary },
+                      { color: isSelected ? colors.onPrimary : colors.textPrimary },
                     ]}
                   >
                     {med.name} ({med.dosage})
@@ -1198,7 +1198,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textSecondary,
     },
     snoozeChipTextSelected: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
       fontWeight: '700',
     },
   });

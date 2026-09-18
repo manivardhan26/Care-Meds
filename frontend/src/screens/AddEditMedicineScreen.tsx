@@ -468,7 +468,7 @@ export default function AddEditMedicineScreen() {
                           <Ionicons
                             name="time-outline"
                             size={14}
-                            color={isSelected ? '#FFFFFF' : colors.textSecondary}
+                            color={isSelected ? colors.onPrimary : colors.textSecondary}
                           />
                           <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
                             {preset.label} ({preset.time})
@@ -872,7 +872,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textSecondary,
     },
     presetChipTextActive: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
       fontWeight: '700',
     },
     customTimeRow: {

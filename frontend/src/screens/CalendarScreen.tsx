@@ -489,7 +489,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textPrimary,
     },
     dayTextSelected: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
       fontWeight: '800',
     },
     dayTextToday: {

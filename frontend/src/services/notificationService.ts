@@ -1,5 +1,6 @@
 import { Vibration, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { Medicine, SnoozeRecord } from '../types';
 import {
   saveSnoozeRecord,
@@ -11,6 +12,18 @@ import {
 import { speakReminder, speakSnoozeNotice } from '../utils/voiceReminder';
 
 const SCHEDULED_REMINDERS_KEY = '@caremeds_scheduled_reminders_store';
+export const REMINDER_CHANNEL_ID = 'medication-reminders';
+
+// Configure foreground notification presentation handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 // Automatically cancel pending notifications when a medicine is deleted
 setOnDeleteMedicineCallback(async (medicineId: string) => {
@@ -24,6 +37,7 @@ setOnSaveMedicineCallback(async (medicine: Medicine) => {
 
 export interface ScheduledReminderItem {
   identifier: string;
+  nativeNotificationId?: string;
   medicineId: string;
   medicineName: string;
   dosage: string;
@@ -39,6 +53,52 @@ type ReminderTriggerCallback = (item: ScheduledReminderItem) => void;
 
 let activeTimers: Map<string, any> = new Map();
 let triggerListeners: Set<ReminderTriggerCallback> = new Set();
+let isInitialized = false;
+
+/**
+ * Configure Android Notification Channel with Maximum Importance and sound/vibration
+ */
+export async function setupNotificationChannel(): Promise<void> {
+  if (Platform.OS === 'android') {
+    try {
+      await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL_ID, {
+        name: 'Medication Reminders',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 250, 500],
+        sound: 'default',
+        enableLights: true,
+        lightColor: '#006874',
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+      });
+    } catch (e) {
+      console.warn('setupNotificationChannel warning:', e);
+    }
+  }
+}
+
+/**
+ * Request notification permissions from Android / iOS
+ */
+export async function requestNotificationPermissions(): Promise<boolean> {
+  try {
+    const settings = await Notifications.getPermissionsAsync();
+    if (settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
+      return true;
+    }
+    const request = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
+    return request.granted || request.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL || false;
+  } catch (e) {
+    console.warn('requestNotificationPermissions error:', e);
+    return false;
+  }
+}
 
 /**
  * Register a callback when any scheduled reminder triggers in-app
@@ -84,7 +144,7 @@ async function fireReminder(item: ScheduledReminderItem) {
     } catch {}
   }
 
-  // 2. Voice chime / guidance in selected language
+  // 2. Voice guidance in selected language
   if (settings.voiceRemindersEnabled !== false) {
     try {
       const lang = settings.voiceLanguage || 'en-US';
@@ -107,13 +167,10 @@ async function fireReminder(item: ScheduledReminderItem) {
     }
   });
 
-  // 4. Remove triggered item from active tracking
+  // 4. Clean up in-memory timer
   if (activeTimers.has(item.identifier)) {
     activeTimers.delete(item.identifier);
   }
-  const list = await getStoredReminders();
-  const remaining = list.filter((r) => r.identifier !== item.identifier);
-  await saveStoredReminders(remaining);
 }
 
 /**
@@ -143,26 +200,81 @@ export function parseTimeToDate(timeStr: string): Date {
 }
 
 /**
- * Re-arm all stored reminders upon app start
+ * Initialize native notifications, channel, permissions, and listeners
  */
 export async function initNotifications(): Promise<void> {
-  const items = await getStoredReminders();
-  const now = Date.now();
-  const remaining: ScheduledReminderItem[] = [];
+  if (isInitialized) return;
+  isInitialized = true;
 
-  for (const item of items) {
-    const delayMs = item.triggerTimestamp - now;
-    if (delayMs > 0) {
-      // Re-schedule memory timer
-      const timer = setTimeout(() => {
-        fireReminder(item);
-      }, delayMs);
-      activeTimers.set(item.identifier, timer);
-      remaining.push(item);
+  try {
+    await setupNotificationChannel();
+    await requestNotificationPermissions();
+
+    // Listen for notification taps when app is backgrounded or killed
+    Notifications.addNotificationResponseReceivedListener((response) => {
+      try {
+        const data = response.notification.request.content.data;
+        if (data && data.medicineId) {
+          const item: ScheduledReminderItem = {
+            identifier: `tap_${Date.now()}`,
+            medicineId: String(data.medicineId),
+            medicineName: String(data.medicineName || 'Medication'),
+            dosage: String(data.dosage || ''),
+            instructions: String(data.instructions || ''),
+            scheduledTime: data.scheduledTime ? String(data.scheduledTime) : undefined,
+            triggerTimestamp: Date.now(),
+            isSnooze: Boolean(data.isSnooze),
+            snoozeMinutes: Number(data.snoozeMinutes) || 0,
+            scheduledAt: Date.now(),
+          };
+          fireReminder(item);
+        }
+      } catch (e) {
+        console.warn('addNotificationResponseReceivedListener error:', e);
+      }
+    });
+
+    // Listen for notifications received while app is in foreground
+    Notifications.addNotificationReceivedListener((notification) => {
+      try {
+        const data = notification.request.content.data;
+        if (data && data.medicineId) {
+          const item: ScheduledReminderItem = {
+            identifier: `fg_${Date.now()}`,
+            medicineId: String(data.medicineId),
+            medicineName: String(data.medicineName || 'Medication'),
+            dosage: String(data.dosage || ''),
+            instructions: String(data.instructions || ''),
+            scheduledTime: data.scheduledTime ? String(data.scheduledTime) : undefined,
+            triggerTimestamp: Date.now(),
+            isSnooze: Boolean(data.isSnooze),
+            snoozeMinutes: Number(data.snoozeMinutes) || 0,
+            scheduledAt: Date.now(),
+          };
+          fireReminder(item);
+        }
+      } catch (e) {
+        console.warn('addNotificationReceivedListener error:', e);
+      }
+    });
+
+    // Re-arm in-memory fallback timers for remaining items
+    const items = await getStoredReminders();
+    const now = Date.now();
+    for (const item of items) {
+      const delayMs = item.triggerTimestamp - now;
+      if (delayMs > 0 && delayMs < 24 * 60 * 60 * 1000) {
+        if (!activeTimers.has(item.identifier)) {
+          const timer = setTimeout(() => {
+            fireReminder(item);
+          }, delayMs);
+          activeTimers.set(item.identifier, timer);
+        }
+      }
     }
+  } catch (e) {
+    console.warn('initNotifications error:', e);
   }
-
-  await saveStoredReminders(remaining);
 }
 
 /**
@@ -174,25 +286,35 @@ export async function cancelMedicineNotification(medicineId: string): Promise<vo
   const toCancel = list.filter((item) => item.medicineId === medicineId);
 
   for (const item of toCancel) {
+    // 1. Cancel native Android/iOS notification
+    if (item.nativeNotificationId) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(item.nativeNotificationId);
+      } catch (e) {
+        console.warn('cancelScheduledNotificationAsync warning:', e);
+      }
+    }
+
+    // 2. Clear in-memory timer
     if (activeTimers.has(item.identifier)) {
       clearTimeout(activeTimers.get(item.identifier));
       activeTimers.delete(item.identifier);
     }
   }
 
-  // Also clean up any timer keyed by medicineId
+  // Also clean up any timer keyed directly by medicineId
   if (activeTimers.has(medicineId)) {
     clearTimeout(activeTimers.get(medicineId));
     activeTimers.delete(medicineId);
   }
 
-  // Remove from storage
+  // Update storage
   const filtered = list.filter((item) => item.medicineId !== medicineId);
   await saveStoredReminders(filtered);
 }
 
 /**
- * Schedule all reminder times for a medicine (e.g. 1 for Once daily, 2 for Twice daily, etc.)
+ * Schedule all reminder times for a medicine (e.g. 1 for Once daily, 2 for Twice daily, 3 for Three times)
  * Strictly prevents duplicates by canceling prior reminders first.
  */
 export async function scheduleMedicineNotifications(medicine: Medicine): Promise<string[]> {
@@ -208,6 +330,8 @@ export async function scheduleMedicineNotifications(medicine: Medicine): Promise
   const scheduledIds: string[] = [];
   const stored = await getStoredReminders();
 
+  await setupNotificationChannel();
+
   for (let i = 0; i < rawTimes.length; i++) {
     const timeStr = rawTimes[i];
     const triggerDate = parseTimeToDate(timeStr);
@@ -215,8 +339,38 @@ export async function scheduleMedicineNotifications(medicine: Medicine): Promise
     const triggerTimestamp = triggerDate.getTime();
     const delayMs = Math.max(1000, triggerTimestamp - Date.now());
 
+    let nativeNotificationId: string | undefined = undefined;
+
+    // 2. Schedule native notification with Android exact alarm & maximum priority
+    try {
+      nativeNotificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Time for ${medicine.name} (${medicine.dosage})`,
+          body: medicine.instructions ? `${medicine.instructions}` : `Take 1 dose of ${medicine.name}`,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          data: {
+            medicineId: medicine.id,
+            medicineName: medicine.name,
+            dosage: medicine.dosage,
+            instructions: medicine.instructions || '',
+            scheduledTime: timeStr,
+            isSnooze: false,
+          },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: triggerDate,
+          channelId: REMINDER_CHANNEL_ID,
+        },
+      });
+    } catch (e) {
+      console.warn('Native notification scheduling failed, relying on fallback timer:', e);
+    }
+
     const item: ScheduledReminderItem = {
       identifier,
+      nativeNotificationId,
       medicineId: medicine.id,
       medicineName: medicine.name,
       dosage: medicine.dosage,
@@ -228,6 +382,7 @@ export async function scheduleMedicineNotifications(medicine: Medicine): Promise
       scheduledAt: Date.now(),
     };
 
+    // 3. Foreground fallback timer
     const timer = setTimeout(() => {
       fireReminder(item);
     }, delayMs);
@@ -257,8 +412,43 @@ export async function scheduleMedicineNotification(
   const triggerTimestamp = triggerDate.getTime();
   const delayMs = Math.max(1000, triggerTimestamp - Date.now());
 
+  await setupNotificationChannel();
+
+  let nativeNotificationId: string | undefined = undefined;
+  try {
+    nativeNotificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: isSnooze
+          ? `Snoozed: ${medicine.name} (${medicine.dosage})`
+          : `Time for ${medicine.name} (${medicine.dosage})`,
+        body: isSnooze
+          ? `Your ${snoozeMinutes}-minute snooze has ended. Take ${medicine.dosage}.`
+          : (medicine.instructions || `Take 1 dose of ${medicine.name}`),
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        data: {
+          medicineId: medicine.id,
+          medicineName: medicine.name,
+          dosage: medicine.dosage,
+          instructions: medicine.instructions || '',
+          scheduledTime: medicine.reminderTime,
+          isSnooze,
+          snoozeMinutes,
+        },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+        channelId: REMINDER_CHANNEL_ID,
+      },
+    });
+  } catch (e) {
+    console.warn('Native notification scheduling failed for single reminder:', e);
+  }
+
   const item: ScheduledReminderItem = {
     identifier,
+    nativeNotificationId,
     medicineId: medicine.id,
     medicineName: medicine.name,
     dosage: medicine.dosage,
@@ -270,13 +460,11 @@ export async function scheduleMedicineNotification(
     scheduledAt: Date.now(),
   };
 
-  // Set timeout
   const timer = setTimeout(() => {
     fireReminder(item);
   }, delayMs);
   activeTimers.set(identifier, timer);
 
-  // Persist
   const list = await getStoredReminders();
   list.push(item);
   await saveStoredReminders(list);
@@ -286,7 +474,6 @@ export async function scheduleMedicineNotification(
 
 /**
  * Reschedule the same medicine reminder for a chosen snooze duration
- * Supported test & prod durations: 1, 2, 5, 10, 15, 30 minutes
  * Guarantees:
  * - Cancels old pending reminder
  * - Does NOT mark as Taken
@@ -302,10 +489,10 @@ export async function scheduleSnooze(
 ): Promise<{ notificationId: string; snoozeUntil: Date }> {
   const snoozeUntil = new Date(Date.now() + snoozeMinutes * 60 * 1000);
 
-  // 1. Schedule exactly one new reminder
+  // 1. Schedule exactly one new native reminder
   const notificationId = await scheduleMedicineNotification(medicine, snoozeUntil, true, snoozeMinutes);
 
-  // 2. Save active snooze record in storage (preserves context without corrupting stock or history)
+  // 2. Save active snooze record in storage
   const snoozeRecord: SnoozeRecord = {
     medicineId: medicine.id,
     medicineName: medicine.name,
@@ -341,7 +528,6 @@ export async function scheduleQuickTestReminder(
 export async function getActiveScheduledReminders(): Promise<ScheduledReminderItem[]> {
   const list = await getStoredReminders();
   const now = Date.now();
-  // Filter out any stale items
   return list.filter((item) => item.triggerTimestamp > now);
 }
 
@@ -349,6 +535,14 @@ export async function getActiveScheduledReminders(): Promise<ScheduledReminderIt
  * Cancel all scheduled reminders
  */
 export async function cancelAllScheduledReminders(): Promise<void> {
+  const list = await getStoredReminders();
+  for (const item of list) {
+    if (item.nativeNotificationId) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(item.nativeNotificationId);
+      } catch {}
+    }
+  }
   activeTimers.forEach((timer) => clearTimeout(timer));
   activeTimers.clear();
   await AsyncStorage.removeItem(SCHEDULED_REMINDERS_KEY);

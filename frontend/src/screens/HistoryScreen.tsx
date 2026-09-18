@@ -563,7 +563,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textSecondary,
     },
     filterChipTextActive: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
     logCard: {
       backgroundColor: colors.cardBackground,

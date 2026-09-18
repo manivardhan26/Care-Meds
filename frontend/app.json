@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
-
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,7 +25,21 @@
       "backgroundColor": "#FFFFFF"
     },
     "plugins": [
-      "expo-font"
-    ]
+      "expo-font",
+      "expo-splash-screen",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#006874"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e98992f7-4a14-426c-a0df-595444ccb477"
+      }
+    },
+    "owner": "mani26"
   }
 }

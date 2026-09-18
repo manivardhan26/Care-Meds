@@ -940,7 +940,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
     modalSaveBtnText: {
       fontSize: 15,
       fontWeight: '700',
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
     sectionHeader: {
       fontSize: 15,
@@ -1067,7 +1067,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
     previewButtonText: {
       fontSize: 16,
       fontWeight: '800',
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
     sampleQuoteBox: {
       flexDirection: 'row',

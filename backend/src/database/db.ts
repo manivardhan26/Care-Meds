@@ -18,61 +18,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   patientAge: '',
 };
 
-const SEED_MEDICINES: Medicine[] = [
-  {
-    id: 'med_1',
-    name: 'Aspirin Cardio',
-    dosage: '81mg',
-    instructions: 'Take 1 tablet daily with breakfast',
-    notes: 'Take 1 tablet daily with breakfast',
-    expiryDate: '2027-12-31',
-    frequency: 'Once daily',
-    reminderTime: '08:00 AM',
-    timeOfDay: 'Morning',
-    supplyCount: 28,
-    createdAt: Date.now() - 86400000 * 5,
-  },
-  {
-    id: 'med_2',
-    name: 'Lisinopril',
-    dosage: '10mg',
-    instructions: 'Take in the morning with water',
-    notes: 'For blood pressure maintenance',
-    expiryDate: '2026-11-30',
-    frequency: 'Once daily',
-    reminderTime: '09:00 AM',
-    timeOfDay: 'Morning',
-    supplyCount: 15,
-    createdAt: Date.now() - 86400000 * 10,
-  },
-  {
-    id: 'med_3',
-    name: 'Metformin',
-    dosage: '500mg',
-    instructions: 'Take after evening meal',
-    notes: 'Take after evening meal',
-    expiryDate: '2028-04-15',
-    frequency: 'Once daily',
-    reminderTime: '06:00 PM',
-    timeOfDay: 'Evening',
-    supplyCount: 45,
-    createdAt: Date.now() - 86400000 * 2,
-  },
-  {
-    id: 'med_4',
-    name: 'Atorvastatin (Expired Sample)',
-    dosage: '20mg',
-    instructions: 'Take 1 tablet at bedtime',
-    notes: 'Check with pharmacy for replacement bottle',
-    expiryDate: '2025-01-10',
-    frequency: 'Once daily',
-    reminderTime: '09:00 PM',
-    timeOfDay: 'Night',
-    supplyCount: 8,
-    createdAt: Date.now() - 86400000 * 40,
-  },
-];
-
 interface DatabaseSchema {
   medicines: Medicine[];
   adherenceLogs: AdherenceLog[];
@@ -98,11 +43,11 @@ class Database {
         return JSON.parse(raw);
       }
     } catch (e) {
-      console.warn('Could not read existing database file, initializing with seeds:', e);
+      console.warn('Could not read existing database file, initializing empty:', e);
     }
 
     const initialData: DatabaseSchema = {
-      medicines: SEED_MEDICINES,
+      medicines: [],
       adherenceLogs: [],
       settings: DEFAULT_SETTINGS,
     };

@@ -8,44 +8,6 @@ export interface ParsedPackage {
   supplyCount: number;
 }
 
-export const SAMPLE_PACKAGES: ParsedPackage[] = [
-  {
-    name: 'Aspirin Cardio',
-    dosage: '81mg',
-    instructions: 'Take 1 tablet daily with morning meal',
-    expiryDate: '2027-12-31',
-    isExpiryDetected: true,
-    suggestedReminderTime: '08:00 AM',
-    supplyCount: 30,
-  },
-  {
-    name: 'Lisinopril',
-    dosage: '10mg',
-    instructions: 'Take 1 tablet in the morning for blood pressure',
-    expiryDate: '2026-11-30',
-    isExpiryDetected: true,
-    suggestedReminderTime: '09:00 AM',
-    supplyCount: 30,
-  },
-  {
-    name: 'Metformin',
-    dosage: '500mg',
-    instructions: 'Take 1 tablet twice daily with food',
-    expiryDate: '2028-06-30',
-    isExpiryDetected: true,
-    suggestedReminderTime: '08:00 AM',
-    supplyCount: 60,
-  },
-  {
-    name: 'Atorvastatin',
-    dosage: '20mg',
-    instructions: 'Take 1 tablet at bedtime',
-    expiryDate: '2025-01-15', // Past date intentionally to demonstrate expired safety alert
-    isExpiryDetected: true,
-    suggestedReminderTime: '09:00 PM',
-    supplyCount: 20,
-  },
-];
 
 export function parseRawOcr(text: string): ParsedPackage {
   const lines = text
