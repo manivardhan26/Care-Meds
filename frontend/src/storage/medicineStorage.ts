@@ -23,102 +23,48 @@ const DEFAULT_SETTINGS: AppSettings = {
   isDarkMode: false,
   voiceLanguage: 'en-US',
   voiceGender: 'female',
-  patientName: 'Pill Me On Time Patient',
+  patientName: 'Your Name',
   patientAge: '',
 };
 
 let memorySnoozes: SnoozeRecord[] | null = null;
-
-const SEED_MEDICINES: Medicine[] = [
-  {
-    id: 'med_1',
-    name: 'Aspirin Cardio',
-    dosage: '81mg',
-    instructions: 'Take 1 tablet daily with breakfast',
-    notes: 'Take 1 tablet daily with breakfast',
-    expiryDate: '2027-12-31',
-    frequency: 'Once daily',
-    reminderTime: '08:00 AM',
-    timeOfDay: 'Morning',
-    supplyCount: 28,
-    createdAt: Date.now() - 86400000 * 5,
-  },
-  {
-    id: 'med_2',
-    name: 'Lisinopril',
-    dosage: '10mg',
-    instructions: 'Take in the morning with water',
-    notes: 'For blood pressure maintenance',
-    expiryDate: '2026-11-30',
-    frequency: 'Once daily',
-    reminderTime: '09:00 AM',
-    timeOfDay: 'Morning',
-    supplyCount: 15,
-    createdAt: Date.now() - 86400000 * 10,
-  },
-  {
-    id: 'med_3',
-    name: 'Metformin',
-    dosage: '500mg',
-    instructions: 'Take after evening meal',
-    notes: 'Take after evening meal',
-    expiryDate: '2028-04-15',
-    frequency: 'Once daily',
-    reminderTime: '06:00 PM',
-    timeOfDay: 'Evening',
-    supplyCount: 45,
-    createdAt: Date.now() - 86400000 * 2,
-  },
-  {
-    id: 'med_4',
-    name: 'Atorvastatin (Expired Sample)',
-    dosage: '20mg',
-    instructions: 'Take 1 tablet at bedtime',
-    notes: 'Check with pharmacy for replacement bottle',
-    expiryDate: '2025-01-10', // Intentionally expired to demonstrate the critical safety banner
-    frequency: 'Once daily',
-    reminderTime: '09:00 PM',
-    timeOfDay: 'Night',
-    supplyCount: 8,
-    createdAt: Date.now() - 86400000 * 40,
-  },
-];
 
 let memoryMedicines: Medicine[] | null = null;
 let memoryLogs: AdherenceLog[] | null = null;
 let memorySettings: AppSettings = DEFAULT_SETTINGS;
 
 export async function getMedicines(): Promise<Medicine[]> {
-  // First attempt to fetch from backend API
-  try {
-    const remote = await getMedicinesApi();
-    if (remote && Array.isArray(remote) && remote.length > 0) {
-      memoryMedicines = remote;
-      await AsyncStorage.setItem(MEDICINES_KEY, JSON.stringify(remote)).catch(() => {});
-      return remote;
-    }
-  } catch {
-    // Graceful fallback to local storage
-  }
-
-  try {
-    const data = await AsyncStorage.getItem(MEDICINES_KEY);
-    if (!data) {
-      // Seed initial medicines for immediate demonstration
-      memoryMedicines = SEED_MEDICINES;
-      await AsyncStorage.setItem(MEDICINES_KEY, JSON.stringify(SEED_MEDICINES)).catch(() => {});
-      return SEED_MEDICINES;
-    }
-    const parsed = JSON.parse(data);
-    memoryMedicines = parsed;
-    return parsed;
-  } catch (error) {
-    console.warn('AsyncStorage getMedicines warning, falling back to cache:', error);
-    if (!memoryMedicines) {
-      memoryMedicines = SEED_MEDICINES;
-    }
+  // 1. Fast path: return memory cache immediately if available
+  if (memoryMedicines !== null) {
     return memoryMedicines;
   }
+
+  // 2. Local-first: read AsyncStorage without blocking on network
+  try {
+    const data = await AsyncStorage.getItem(MEDICINES_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      memoryMedicines = Array.isArray(parsed) ? parsed : [];
+    } else {
+      memoryMedicines = [];
+    }
+  } catch (error) {
+    console.warn('AsyncStorage getMedicines warning, falling back to cache:', error);
+    memoryMedicines = memoryMedicines || [];
+  }
+
+  // 3. Non-blocking background sync with backend if available
+  getMedicinesApi()
+    .then(async (remote) => {
+      if (remote && Array.isArray(remote) && remote.length > 0) {
+        // Only merge if remote has data
+        memoryMedicines = remote;
+        await AsyncStorage.setItem(MEDICINES_KEY, JSON.stringify(remote)).catch(() => {});
+      }
+    })
+    .catch(() => {});
+
+  return memoryMedicines;
 }
 
 export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>, existingId?: string): Promise<Medicine> {
@@ -177,13 +123,27 @@ export async function saveMedicine(medicine: Omit<Medicine, 'id' | 'createdAt'>,
     console.warn('AsyncStorage saveMedicine warning:', e);
   }
 
+  // Trigger notification callback to auto-schedule all reminder times
+  if (onSaveMedicineCallback) {
+    try {
+      await onSaveMedicineCallback(updatedMedicine);
+    } catch (e) {
+      console.warn('onSaveMedicineCallback error:', e);
+    }
+  }
+
   // Asynchronously sync with backend API
   saveMedicineApi(normalizedMedicine, existingId).catch(() => {});
 
   return updatedMedicine;
 }
 
+let onSaveMedicineCallback: ((medicine: Medicine) => void | Promise<void>) | null = null;
 let onDeleteMedicineCallback: ((id: string) => void | Promise<void>) | null = null;
+
+export function setOnSaveMedicineCallback(cb: (medicine: Medicine) => void | Promise<void>) {
+  onSaveMedicineCallback = cb;
+}
 
 export function setOnDeleteMedicineCallback(cb: (id: string) => void | Promise<void>) {
   onDeleteMedicineCallback = cb;
@@ -243,27 +203,32 @@ export async function updateSupply(id: string, count: number): Promise<void> {
 }
 
 export async function getAdherenceLogs(): Promise<AdherenceLog[]> {
-  // First attempt to fetch from backend API
-  try {
-    const remote = await getAdherenceLogsApi();
-    if (remote && Array.isArray(remote)) {
-      memoryLogs = remote;
-      await AsyncStorage.setItem(ADHERENCE_KEY, JSON.stringify(remote)).catch(() => {});
-      return remote;
-    }
-  } catch {
-    // Graceful fallback to local storage
+  // 1. Fast path: return memory cache immediately
+  if (memoryLogs !== null) {
+    return memoryLogs;
   }
 
+  // 2. Local-first: read AsyncStorage without blocking
   try {
     const data = await AsyncStorage.getItem(ADHERENCE_KEY);
     const parsed = data ? JSON.parse(data) : [];
-    memoryLogs = parsed;
-    return parsed;
+    memoryLogs = Array.isArray(parsed) ? parsed : [];
   } catch (error) {
     console.warn('AsyncStorage getAdherenceLogs warning, falling back to cache:', error);
-    return memoryLogs || [];
+    memoryLogs = memoryLogs || [];
   }
+
+  // 3. Non-blocking background sync
+  getAdherenceLogsApi()
+    .then(async (remote) => {
+      if (remote && Array.isArray(remote) && remote.length > 0) {
+        memoryLogs = remote;
+        await AsyncStorage.setItem(ADHERENCE_KEY, JSON.stringify(remote)).catch(() => {});
+      }
+    })
+    .catch(() => {});
+
+  return memoryLogs;
 }
 
 export async function logAdherence(
@@ -336,8 +301,8 @@ export async function logAdherence(
     }
   }
 
-  // Clear active snooze if medicine has been resolved (TAKEN or SKIPPED)
-  if (status === 'TAKEN' || status === 'SKIPPED') {
+  // Clear active snooze if medicine has been resolved (TAKEN, SKIPPED, or NOT_SURE)
+  if (status === 'TAKEN' || status === 'SKIPPED' || status === 'NOT_SURE') {
     await clearSnoozeRecord(medicineId);
   }
 
@@ -345,6 +310,45 @@ export async function logAdherence(
   logAdherenceApi(medicineId, medicineName, dosage, scheduledTime, dateString, status, notes).catch(() => {});
 
   return record;
+}
+
+/**
+ * Check if a scheduled dose was already logged today (e.g. TAKEN, NOT_SURE, SKIPPED)
+ * and retrieve exact formatted action time for duplicate dose warnings.
+ */
+export async function getDoseStatusToday(
+  medicineId: string,
+  scheduledTime?: string
+): Promise<{
+  isRecorded: boolean;
+  isTaken: boolean;
+  status?: AdherenceStatus;
+  actionTimestamp?: number;
+  formattedTime?: string;
+  record?: AdherenceLog;
+}> {
+  const today = new Date().toISOString().split('T')[0];
+  const logs = await getAdherenceLogs();
+  const log = logs.find(
+    (l) => l.medicineId === medicineId && l.dateString === today && (!scheduledTime || l.scheduledTime === scheduledTime)
+  );
+
+  if (!log) {
+    return { isRecorded: false, isTaken: false };
+  }
+
+  const formattedTime = log.actionTimestamp
+    ? new Date(log.actionTimestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : '';
+
+  return {
+    isRecorded: true,
+    isTaken: log.status === 'TAKEN',
+    status: log.status,
+    actionTimestamp: log.actionTimestamp,
+    formattedTime,
+    record: log,
+  };
 }
 
 export async function getActiveSnoozes(): Promise<SnoozeRecord[]> {
@@ -388,25 +392,31 @@ export async function clearSnoozeRecord(medicineId: string): Promise<void> {
 }
 
 export async function getSettings(): Promise<AppSettings> {
-  try {
-    const remote = await getSettingsApi();
-    if (remote) {
-      memorySettings = remote;
-      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(remote)).catch(() => {});
-      return remote;
-    }
-  } catch {
-    // Fallback to local storage
+  // 1. Fast path: return memory cache if initialized
+  if (memorySettings && memorySettings !== DEFAULT_SETTINGS) {
+    return memorySettings;
   }
 
+  // 2. Local-first: read AsyncStorage without blocking
   try {
     const data = await AsyncStorage.getItem(SETTINGS_KEY);
     const parsed = data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
     memorySettings = parsed;
-    return parsed;
   } catch (error) {
-    return memorySettings || DEFAULT_SETTINGS;
+    memorySettings = memorySettings || DEFAULT_SETTINGS;
   }
+
+  // 3. Non-blocking background sync
+  getSettingsApi()
+    .then(async (remote) => {
+      if (remote) {
+        memorySettings = { ...DEFAULT_SETTINGS, ...remote };
+        await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(memorySettings)).catch(() => {});
+      }
+    })
+    .catch(() => {});
+
+  return memorySettings;
 }
 
 export async function saveSettings(settings: Partial<AppSettings>): Promise<AppSettings> {

@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeColors } from '../theme/colors';
-import { SAMPLE_PACKAGES } from '../utils/ocrParser';
 
 export default function ScanScreen() {
   const navigation = useNavigation<any>();
@@ -23,10 +22,11 @@ export default function ScanScreen() {
       const asset = result.assets[0];
       navigation.navigate('ScanReview', {
         extracted: {
-          name: 'Scanned Prescription',
-          dosage: '10mg',
-          instructions: 'Take 1 tablet daily in the morning',
-          expiryDate: '2027-08-31',
+          name: '',
+          dosage: '',
+          instructions: '',
+          expiryDate: '',
+          isExpiryDetected: false,
           supplyCount: 30,
           imageUri: asset.uri,
         },
@@ -34,53 +34,54 @@ export default function ScanScreen() {
     }
   };
 
-  const handlePickImage = () => {
-    Alert.alert(
-      'Scan Medicine Package',
-      'Choose how you want to add the medicine package photo:',
-      [
-        {
-          text: 'Take Photo with Camera',
-          onPress: async () => {
-            try {
-              const { status } = await ImagePicker.requestCameraPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission Denied', 'Camera permission is required to take photos of medicine packages.');
-                return;
-              }
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                quality: 0.8,
-              });
-              processImageResult(result);
-            } catch (e) {
-              console.warn('Camera error:', e);
-            }
-          },
-        },
-        {
-          text: 'Choose from Gallery',
-          onPress: async () => {
-            try {
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ['images'],
-                allowsEditing: true,
-                quality: 0.8,
-              });
-              processImageResult(result);
-            } catch (e) {
-              console.warn('Image picker error:', e);
-            }
-          },
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+  const handleLaunchCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Camera Permission Required',
+          'Pill Me On Time needs camera permission to capture photos of medicine packages. Please grant camera permission to continue.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Try Again', onPress: handleLaunchCamera },
+          ]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      processImageResult(result);
+    } catch (e) {
+      console.warn('Camera launch error:', e);
+      Alert.alert(
+        'Camera Error',
+        'Could not access the camera. Please ensure camera permissions are allowed on your device and try again.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Retry', onPress: handleLaunchCamera },
+        ]
+      );
+    }
   };
 
-  const handleSelectSample = (sample: any) => {
-    navigation.navigate('ScanReview', { extracted: sample });
+  const handleLaunchGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      processImageResult(result);
+    } catch (e) {
+      console.warn('Image picker error:', e);
+      Alert.alert('Gallery Error', 'Could not access the photo library. Please try again.');
+    }
   };
 
   const styles = useMemo(() => createStyles(colors, isDarkMode), [colors, isDarkMode]);
@@ -88,7 +89,11 @@ export default function ScanScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.headerBar}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Back"
+        >
           <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Scan Medicine Box</Text>
@@ -96,39 +101,49 @@ export default function ScanScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.introText}>
-          Position your medicine package in front of your camera or pick a photo from your gallery,
-          or choose a sample package below to test auto-filling.
+          Take a clear photo of your medicine box or prescription label. You can review the photo and
+          fill in or verify details on the next screen.
         </Text>
 
-        <TouchableOpacity style={styles.captureButton} onPress={handlePickImage}>
-          <Ionicons name="camera" size={28} color={isDarkMode ? colors.onPrimary : '#FFF'} />
-          <Text style={styles.captureButtonText}>Capture / Pick Package Photo</Text>
+        {/* Primary: Take Photo with Camera */}
+        <TouchableOpacity
+          style={styles.captureButton}
+          onPress={handleLaunchCamera}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="camera" size={26} color={colors.onPrimary} />
+          <Text style={styles.captureButtonText}>Take Photo with Camera</Text>
         </TouchableOpacity>
 
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>OR CHOOSE SAMPLE</Text>
-          <View style={styles.dividerLine} />
+        {/* Secondary: Choose from Gallery */}
+        <TouchableOpacity
+          style={styles.galleryButton}
+          onPress={handleLaunchGallery}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="images-outline" size={24} color={colors.primary} />
+          <Text style={styles.galleryButtonText}>Choose from Gallery</Text>
+        </TouchableOpacity>
+
+        {/* Photography Tips Card */}
+        <View style={styles.tipsCard}>
+          <View style={styles.tipsHeaderRow}>
+            <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+            <Text style={styles.tipsTitle}>Tips for Best Results</Text>
+          </View>
+          <View style={styles.tipItem}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.takenGreen} />
+            <Text style={styles.tipText}>Place medicine box on a flat, well-lit surface.</Text>
+          </View>
+          <View style={styles.tipItem}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.takenGreen} />
+            <Text style={styles.tipText}>Make sure medicine name and dosage are clearly visible.</Text>
+          </View>
+          <View style={styles.tipItem}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.takenGreen} />
+            <Text style={styles.tipText}>Ensure the expiration date is in focus and not covered.</Text>
+          </View>
         </View>
-
-        <Text style={styles.sampleSectionTitle}>Quick Demo Packages:</Text>
-
-        {SAMPLE_PACKAGES.map((sample, idx) => (
-          <TouchableOpacity
-            key={idx}
-            style={styles.sampleCard}
-            onPress={() => handleSelectSample(sample)}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sampleName}>
-                {sample.name} ({sample.dosage})
-              </Text>
-              <Text style={styles.sampleInstructions}>{sample.instructions}</Text>
-              <Text style={styles.sampleExpiry}>Expires: {sample.expiryDate}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={22} color={colors.primary} />
-          </TouchableOpacity>
-        ))}
       </ScrollView>
     </View>
   );
@@ -168,69 +183,69 @@ const createStyles = (colors: ThemeColors, isDarkMode: boolean) =>
       fontSize: 16,
       color: colors.textSecondary,
       lineHeight: 24,
-      marginBottom: 20,
+      marginBottom: 24,
     },
     captureButton: {
       backgroundColor: colors.primary,
       borderRadius: 16,
-      height: 60,
+      height: 58,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 12,
       elevation: 3,
+      marginBottom: 14,
     },
     captureButtonText: {
-      color: isDarkMode ? colors.onPrimary : '#FFF',
+      color: colors.onPrimary,
       fontSize: 18,
       fontWeight: 'bold',
     },
-    dividerRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginVertical: 24,
-    },
-    dividerLine: {
-      flex: 1,
-      height: 1,
-      backgroundColor: colors.border,
-    },
-    dividerText: {
-      fontSize: 13,
-      color: colors.textMuted,
-      fontWeight: 'bold',
-      marginHorizontal: 10,
-    },
-    sampleSectionTitle: {
-      fontSize: 17,
-      fontWeight: 'bold',
-      color: colors.textPrimary,
-      marginBottom: 12,
-    },
-    sampleCard: {
+    galleryButton: {
       backgroundColor: colors.surfaceCard,
-      borderRadius: 14,
-      padding: 16,
+      borderRadius: 16,
+      height: 56,
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 12,
-      elevation: 1,
+      justifyContent: 'center',
+      gap: 10,
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      marginBottom: 28,
+    },
+    galleryButtonText: {
+      color: colors.primary,
+      fontSize: 17,
+      fontWeight: '600',
+    },
+    tipsCard: {
+      backgroundColor: colors.surfaceCard,
+      borderRadius: 16,
+      padding: 18,
       borderWidth: 1,
       borderColor: colors.border,
     },
-    sampleName: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: colors.primary,
+    tipsHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14,
     },
-    sampleInstructions: {
+    tipsTitle: {
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: colors.textPrimary,
+    },
+    tipItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      marginBottom: 10,
+    },
+    tipText: {
+      flex: 1,
       fontSize: 14,
       color: colors.textSecondary,
-      marginTop: 3,
-    },
-    sampleExpiry: {
-      fontSize: 13,
-      color: colors.textMuted,
-      marginTop: 4,
+      lineHeight: 20,
     },
   });

@@ -88,7 +88,8 @@ export default function HistoryScreen() {
   // Counts for adherence history filter chips
   const totalAllTime = logs.length;
   const takenAllTime = logs.filter((l) => l.status === 'TAKEN').length;
-  const missedAllTime = logs.filter((l) => l.status === 'MISSED' || l.status === 'SKIPPED').length;
+  const notSureAllTime = logs.filter((l) => l.status === 'NOT_SURE').length;
+  const missedAllTime = logs.filter((l) => l.status === 'MISSED').length;
   const skippedAllTime = logs.filter((l) => l.status === 'SKIPPED').length;
   const snoozedAllTime = logs.filter((l) => l.status === 'SNOOZED').length;
 
@@ -216,8 +217,9 @@ export default function HistoryScreen() {
           {[
             { key: 'ALL', label: `All (${totalAllTime})` },
             { key: 'TAKEN', label: `Taken (${takenAllTime})` },
+            { key: 'SKIPPED', label: `Not Taken (${skippedAllTime})` },
+            { key: 'NOT_SURE', label: `Not Sure (${notSureAllTime})` },
             { key: 'MISSED', label: `Missed (${missedAllTime})` },
-            { key: 'SKIPPED', label: `Skipped (${skippedAllTime})` },
             { key: 'SNOOZED', label: `Snoozed (${snoozedAllTime})` },
           ].map((item) => {
             const isActive = filter === item.key;
@@ -252,6 +254,23 @@ export default function HistoryScreen() {
               minute: '2-digit',
             });
 
+            const getStatusLabel = (status: AdherenceStatus) => {
+              switch (status) {
+                case 'TAKEN':
+                  return 'Taken';
+                case 'NOT_SURE':
+                  return 'Not Sure';
+                case 'SKIPPED':
+                  return 'Not Taken';
+                case 'MISSED':
+                  return 'Missed';
+                case 'SNOOZED':
+                  return 'Snoozed';
+                default:
+                  return status;
+              }
+            };
+
             return (
               <View key={log.id} style={styles.logCard}>
                 <View style={{ flex: 1 }}>
@@ -262,12 +281,21 @@ export default function HistoryScreen() {
                   <Text style={styles.logTimestamp}>
                     {log.dateString} at {timeStr}
                   </Text>
+                  {log.status === 'NOT_SURE' && (
+                    <View style={styles.notSureSafetyNote}>
+                      <Ionicons name="help-circle" size={13} color={colors.notSureAmber || '#D97706'} />
+                      <Text style={[styles.notSureSafetyNoteText, { color: colors.notSureText || '#92400E' }]}>
+                        Unverified dose • Consult pharmacist if unsure
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 <View
                   style={[
                     styles.logBadge,
                     log.status === 'TAKEN' && styles.logBadgeTaken,
+                    log.status === 'NOT_SURE' && styles.logBadgeNotSure,
                     log.status === 'MISSED' && styles.logBadgeMissed,
                     log.status === 'SKIPPED' && styles.logBadgeSkipped,
                     log.status === 'SNOOZED' && styles.logBadgeSnoozed,
@@ -277,12 +305,13 @@ export default function HistoryScreen() {
                     style={[
                       styles.logBadgeText,
                       log.status === 'TAKEN' && { color: colors.takenGreen },
+                      log.status === 'NOT_SURE' && { color: colors.notSureText || '#92400E' },
                       log.status === 'MISSED' && { color: colors.alertRed },
                       log.status === 'SKIPPED' && { color: isDarkMode ? '#CBD5E1' : colors.skippedGray },
                       log.status === 'SNOOZED' && { color: colors.snoozeOrange },
                     ]}
                   >
-                    {log.status}
+                    {getStatusLabel(log.status)}
                   </Text>
                 </View>
               </View>
@@ -534,7 +563,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textSecondary,
     },
     filterChipTextActive: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
     logCard: {
       backgroundColor: colors.cardBackground,
@@ -569,6 +598,9 @@ function createStyles(colors: any, isDarkMode: boolean) {
     logBadgeTaken: {
       backgroundColor: colors.takenGreenContainer,
     },
+    logBadgeNotSure: {
+      backgroundColor: colors.notSureContainer || '#FEF3C7',
+    },
     logBadgeMissed: {
       backgroundColor: colors.alertRedContainer,
     },
@@ -581,6 +613,16 @@ function createStyles(colors: any, isDarkMode: boolean) {
     logBadgeText: {
       fontSize: 12,
       fontWeight: '700',
+    },
+    notSureSafetyNote: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 4,
+    },
+    notSureSafetyNoteText: {
+      fontSize: 11,
+      fontWeight: '600',
     },
     emptyCard: {
       backgroundColor: colors.cardBackground,

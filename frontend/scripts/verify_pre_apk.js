@@ -138,13 +138,13 @@ test('Strict language isolation across English, Telugu, and Hindi', () => {
 
 // 10. PROFILE
 console.log('[Domain 10: Profile]');
-test('Profile displays large avatar, patient name, subtitle, and provides edit modal with validation', () => {
+test('Profile displays large avatar, user name, subtitle, and provides edit modal with validation', () => {
   const setCode = fs.readFileSync(path.resolve(__dirname, '../src/screens/SettingsScreen.tsx'), 'utf-8');
-  assert(setCode.includes('Senior Medication Companion'), 'Displays subtitle');
-  assert(setCode.includes('settings.patientName?.trim() || \'Pill Me On Time Patient\''), 'Displays patient name');
+  assert(setCode.includes('Your medication companion'), 'Displays subtitle');
+  assert(setCode.includes('settings.patientName?.trim() || \'Your Name\''), 'Displays user name');
   assert(setCode.includes('handleOpenEditProfile'), 'Has handleOpenEditProfile');
   assert(setCode.includes('handleSaveProfile'), 'Has handleSaveProfile');
-  assert(setCode.includes('Missing Name'), 'Rejects empty patient name');
+  assert(setCode.includes('Missing Name'), 'Rejects empty name');
   assert(setCode.includes('parsedAge < 1 || parsedAge > 125'), 'Validates age range if entered');
 });
 

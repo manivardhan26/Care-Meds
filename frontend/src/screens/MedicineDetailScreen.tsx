@@ -793,7 +793,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textSecondary,
     },
     unitChipTextActive: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
     modalFieldLabel: {
       fontSize: 13,
@@ -838,7 +838,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
     modalSaveBtnText: {
       fontSize: 14,
       fontWeight: '700',
-      color: '#FFFFFF',
+      color: colors.onPrimary,
     },
   });
 }

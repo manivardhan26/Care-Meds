@@ -28,7 +28,7 @@ export function getApiBaseUrl(): string {
 
 const API_BASE_URL = getApiBaseUrl();
 
-const FETCH_TIMEOUT_MS = 4000;
+const FETCH_TIMEOUT_MS = 1500;
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();

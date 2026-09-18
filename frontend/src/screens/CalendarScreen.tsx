@@ -139,14 +139,17 @@ export default function CalendarScreen() {
 
               const dayLogs = logsByDate.get(dateStr) || [];
               const hasTaken = dayLogs.some((l) => l.status === 'TAKEN');
+              const hasNotSure = dayLogs.some((l) => l.status === 'NOT_SURE');
               const hasMissedOrSkipped = dayLogs.some((l) => l.status === 'MISSED' || l.status === 'SKIPPED');
               const hasSnoozed = dayLogs.some((l) => l.status === 'SNOOZED');
 
               let dotColor = null;
-              if (hasTaken && !hasMissedOrSkipped) {
-                dotColor = colors.takenGreen;
-              } else if (hasMissedOrSkipped) {
+              if (hasMissedOrSkipped) {
                 dotColor = colors.alertRed;
+              } else if (hasNotSure) {
+                dotColor = colors.notSureAmber || '#D97706';
+              } else if (hasTaken) {
+                dotColor = colors.takenGreen;
               } else if (hasSnoozed) {
                 dotColor = colors.snoozeOrange;
               }
@@ -226,6 +229,8 @@ export default function CalendarScreen() {
               .map((item) => {
                 const isTaken = item.status === 'TAKEN';
                 const isUpcoming = item.status === 'UPCOMING';
+                const isNotSure = item.status === 'NOT_SURE';
+
                 return (
                   <View key={item.key} style={styles.scheduleCard}>
                     <View style={{ flex: 1 }}>
@@ -242,6 +247,22 @@ export default function CalendarScreen() {
                     ) : isUpcoming ? (
                       <View style={styles.pendingCircle}>
                         <Ionicons name="time-outline" size={16} color={colors.textMuted} />
+                      </View>
+                    ) : isNotSure ? (
+                      <View
+                        style={[
+                          styles.statusTag,
+                          { backgroundColor: colors.notSureContainer || '#FEF3C7' },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusTagText,
+                            { color: colors.notSureText || '#92400E', fontWeight: '700' },
+                          ]}
+                        >
+                          Not Sure
+                        </Text>
                       </View>
                     ) : (
                       <View
@@ -264,7 +285,7 @@ export default function CalendarScreen() {
                               : { color: colors.alertRed },
                           ]}
                         >
-                          {item.status}
+                          {item.status === 'SKIPPED' ? 'Not Taken' : item.status}
                         </Text>
                       </View>
                     )}
@@ -281,6 +302,8 @@ export default function CalendarScreen() {
         ) : (
           selectedLogs.map((log) => {
             const isTaken = log.status === 'TAKEN';
+            const isNotSure = log.status === 'NOT_SURE';
+
             return (
               <View key={log.id} style={styles.scheduleCard}>
                 <View style={{ flex: 1 }}>
@@ -293,6 +316,22 @@ export default function CalendarScreen() {
                 {isTaken ? (
                   <View style={styles.checkCircle}>
                     <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                  </View>
+                ) : isNotSure ? (
+                  <View
+                    style={[
+                      styles.statusTag,
+                      { backgroundColor: colors.notSureContainer || '#FEF3C7' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusTagText,
+                        { color: colors.notSureText || '#92400E', fontWeight: '700' },
+                      ]}
+                    >
+                      Not Sure
+                    </Text>
                   </View>
                 ) : (
                   <View
@@ -315,7 +354,7 @@ export default function CalendarScreen() {
                           : { color: colors.alertRed },
                       ]}
                     >
-                      {log.status}
+                      {log.status === 'SKIPPED' ? 'Not Taken' : log.status}
                     </Text>
                   </View>
                 )}
@@ -450,7 +489,7 @@ function createStyles(colors: any, isDarkMode: boolean) {
       color: colors.textPrimary,
     },
     dayTextSelected: {
-      color: '#FFFFFF',
+      color: colors.onPrimary,
       fontWeight: '800',
     },
     dayTextToday: {
