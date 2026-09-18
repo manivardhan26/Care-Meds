@@ -7,6 +7,7 @@
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#FFFFFF"
